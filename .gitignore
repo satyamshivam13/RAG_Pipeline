@@ -84,3 +84,5 @@ Thumbs.db
 *.bak
 *.backup
 *~
+/graphify-out/
+*graphify-python-*.log
