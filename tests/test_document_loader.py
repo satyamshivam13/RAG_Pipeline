@@ -20,7 +20,7 @@ def test_chunking_prefers_semantic_boundaries():
 
 
 def test_chunking_overlap_and_api_compatibility():
-    cfg = ChunkingConfig(chunk_size=60, chunk_overlap=8, min_chunk_size=10)
+    cfg = ChunkingConfig(chunk_size=28, chunk_overlap=8, min_chunk_size=10)
     loader = DocumentLoader(cfg)
 
     text = "Sentence A. Sentence B. Sentence C. Sentence D. Sentence E."
@@ -44,3 +44,4 @@ def test_chunking_drops_tiny_trailing_fragment():
 
     assert len(chunks) >= 1
     assert all(len(c.content) >= cfg.min_chunk_size for c in chunks)
+
