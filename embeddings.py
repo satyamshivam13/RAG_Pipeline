@@ -1,6 +1,5 @@
-"""
-Embedding model wrapper.  Isolates the sentence-transformers dependency so
-swapping to OpenAI embeddings or a local ONNX model is a one-file change.
+﻿"""
+Embedding model wrapper.
 """
 
 from __future__ import annotations
@@ -16,26 +15,22 @@ logger = logging.getLogger(__name__)
 class EmbeddingModel:
     def __init__(self, config: EmbeddingConfig):
         self._config = config
-        logger.info(f"Loading embedding model: {config.model_name}")
-        self._model = SentenceTransformer(
-            config.model_name,
-            device=config.device,
-        )
-        # Validate dimension
+        logger.info("Loading embedding model: %s", config.model_name)
+        self._model = SentenceTransformer(config.model_name, device=config.device)
+
         test_emb = self._model.encode(["test"], normalize_embeddings=config.normalize)
-        actual_dim = test_emb.shape[1]
+        actual_dim = int(test_emb.shape[1])
         if actual_dim != config.dimension:
             raise ValueError(
-                f"Model outputs dim={actual_dim} but config says {config.dimension}. "
-                f"Update EmbeddingConfig.dimension to {actual_dim}."
+                "Embedding dimension mismatch: "
+                f"model '{config.model_name}' outputs {actual_dim}, "
+                f"but EmbeddingConfig.dimension is {config.dimension}. "
+                "Update config dimension or rebuild index for matching vectors."
             )
-        logger.info(f"Embedding model ready. dim={actual_dim}")
+
+        logger.info("Embedding model ready. dim=%s", actual_dim)
 
     def embed(self, texts: list[str]) -> np.ndarray:
-        """
-        Embed a list of strings → (N, D) float32 numpy array.
-        Handles batching internally.
-        """
         if not texts:
             return np.empty((0, self._config.dimension), dtype=np.float32)
 
@@ -49,7 +44,6 @@ class EmbeddingModel:
         return embeddings.astype(np.float32)
 
     def embed_query(self, query: str) -> np.ndarray:
-        """Embed a single query string → (D,) vector."""
         return self.embed([query])[0]
 
     @property

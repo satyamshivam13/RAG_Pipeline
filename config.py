@@ -13,8 +13,8 @@ load_dotenv()
 
 @dataclass(frozen=True)
 class EmbeddingConfig:
-    model_name: str = "all-MiniLM-L6-v2"
-    dimension: int = 384  # Must match model output dim
+    model_name: str = "BAAI/bge-large-en-v1.5"
+    dimension: int = 1024  # Must match model output dim
     device: str = "cpu"  # "cpu" | "cuda"
     batch_size: int = 64
     normalize: bool = True
