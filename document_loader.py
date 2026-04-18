@@ -1,5 +1,5 @@
-"""
-Document ingestion: load text → split into overlapping chunks.
+﻿"""
+Document ingestion: load text and split into semantic-aware overlapping chunks.
 Supports plain strings, .txt files, and lists of strings.
 """
 
@@ -17,8 +17,6 @@ class DocumentLoader:
     def __init__(self, config: ChunkingConfig):
         self._config = config
 
-    # ── Public API ──────────────────────────────────────────────────
-
     def load_text(self, text: str, source: str = "inline") -> Document:
         return Document(content=text, source=source)
 
@@ -28,13 +26,10 @@ class DocumentLoader:
         return Document(content=content, source=str(path))
 
     def load_texts(self, texts: list[str], source: str = "batch") -> list[Document]:
-        return [
-            Document(content=t, source=f"{source}_{i}")
-            for i, t in enumerate(texts)
-        ]
+        return [Document(content=t, source=f"{source}_{i}") for i, t in enumerate(texts)]
 
     def chunk_document(self, doc: Document) -> list[Chunk]:
-        """Split a document into overlapping fixed-size chunks."""
+        """Split a document into overlapping chunks with semantic breakpoint preference."""
         text = doc.content
         chunks: list[Chunk] = []
         start = 0
@@ -42,47 +37,63 @@ class DocumentLoader:
 
         while start < len(text):
             end = start + self._config.chunk_size
-
-            # Try to break at sentence boundary
             actual_end = self._find_break_point(text, start, end)
+
+            # Guard against non-progressing windows.
+            if actual_end <= start:
+                actual_end = min(len(text), start + self._config.chunk_size)
+                if actual_end <= start:
+                    break
+
             chunk_text = text[start:actual_end].strip()
 
             if len(chunk_text) >= self._config.min_chunk_size:
-                chunks.append(Chunk(
-                    document_id=doc.id,
-                    content=chunk_text,
-                    source=doc.source,
-                    chunk_index=idx,
-                    metadata=doc.metadata.copy(),
-                ))
+                chunks.append(
+                    Chunk(
+                        document_id=doc.id,
+                        content=chunk_text,
+                        source=doc.source,
+                        chunk_index=idx,
+                        metadata=doc.metadata.copy(),
+                    )
+                )
                 idx += 1
 
-            start = actual_end - self._config.chunk_overlap
-            if start >= len(text) or actual_end >= len(text):
+            if actual_end >= len(text):
                 break
 
-        logger.debug(f"Document {doc.source}: {len(chunks)} chunks")
+            # Maintain backward-compatible overlap semantics.
+            next_start = max(actual_end - self._config.chunk_overlap, start + 1)
+            start = next_start
+
+        logger.debug("Document %s: %s chunks", doc.source, len(chunks))
         return chunks
 
     def chunk_documents(self, docs: list[Document]) -> list[Chunk]:
         all_chunks = []
         for doc in docs:
             all_chunks.extend(self.chunk_document(doc))
-        logger.info(f"Chunked {len(docs)} docs → {len(all_chunks)} chunks")
+        logger.info("Chunked %s docs to %s chunks", len(docs), len(all_chunks))
         return all_chunks
-
-    # ── Internals ───────────────────────────────────────────────────
 
     @staticmethod
     def _find_break_point(text: str, start: int, end: int) -> int:
-        """Try to break at the last sentence-ending punctuation before `end`."""
+        """Choose a semantically meaningful break near end, fallback to hard split."""
         if end >= len(text):
             return len(text)
 
-        # Search backward from `end` for sentence boundaries
         search_region = text[start:end]
-        for delim in [". ", ".\n", "!\n", "?\n", "! ", "? ", "\n\n"]:
+
+        # Paragraph boundaries first, then sentence boundaries.
+        delimiters = ["\n\n", ".\n", "!\n", "?\n", ". ", "! ", "? ", "\n"]
+        for delim in delimiters:
             last = search_region.rfind(delim)
             if last != -1 and last > len(search_region) * 0.3:
                 return start + last + len(delim)
+
+        # Fallback: split at nearest space before hard limit.
+        space = search_region.rfind(" ")
+        if space != -1 and space > len(search_region) * 0.3:
+            return start + space + 1
+
         return end
