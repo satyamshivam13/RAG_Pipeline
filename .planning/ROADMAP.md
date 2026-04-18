@@ -43,6 +43,11 @@ Exit criteria:
 - No context-window overflow errors in stress tests.
 - All existing tests pass; new tests added for changed behavior.
 
+Plans:
+- [ ] 01-01-PLAN.md - Remove blocking guardrail runtime stage and make evaluator deferred by default.
+- [ ] 01-02-PLAN.md - Implement semantic chunking and hard context budget truncation behavior.
+- [ ] 01-03-PLAN.md - Upgrade embedding default and enforce dimension/index compatibility checks.
+
 ### Phase 2 - Measure & Observe (Week 3-4)
 Objective: make quality and reliability measurable.
 
@@ -101,7 +106,7 @@ Exit criteria:
 - Phase 4 relies on agreed metrics and tracing from Phase 2.
 
 ## Immediate Next Action
-Execute Phase 1 plan in .planning/phase-01-stabilize/PLAN.md.
+Execute Phase 1 plans in .planning/phases/01-stabilize/01-01-PLAN.md, .planning/phases/01-stabilize/01-02-PLAN.md, and .planning/phases/01-stabilize/01-03-PLAN.md.
 
 ## Completion Definition
 Milestone complete when all four phases are implemented and all v1 requirements in `.planning/REQUIREMENTS.md` are marked complete.
