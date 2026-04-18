@@ -1,23 +1,22 @@
-"""
+﻿"""
 Pipeline Orchestrator
-─────────────────────
-Wires every component together and exposes a simple `query()` method.
-
-Flow:
-  1. Retriever fetches top-k chunks from the vector store.
-  2. Guardrail Agent filters for relevance & safety.
-  3. Generator produces an answer from the filtered context.
-  4. Evaluator Agent scores the answer for factual consistency.
-  5. Everything is packaged into a PipelineResult.
+---------------------
+Wires every component together and exposes a simple query() method.
 """
 
 from __future__ import annotations
 import logging
 import time
-from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
+from typing import Optional, Tuple
 
 from config import PipelineConfig
-from models import Document, Chunk, PipelineResult
+from models import (
+    Document,
+    PipelineResult,
+    EvaluatorOutput,
+    EvaluationStatus,
+)
 from llm_client import LLMClient
 from embeddings import EmbeddingModel
 from vector_store import VectorStore
@@ -31,21 +30,11 @@ logger = logging.getLogger(__name__)
 
 
 class RAGPipeline:
-    """
-    End-to-end multi-agent RAG pipeline.
-
-    Usage:
-        pipeline = RAGPipeline()
-        pipeline.ingest(["doc1 text", "doc2 text"])
-        result = pipeline.query("What is X?")
-        print(result.answer)
-        print(result.consistency_score)
-    """
+    """End-to-end multi-agent RAG pipeline."""
 
     def __init__(self, config: Optional[PipelineConfig] = None):
         self._config = config or PipelineConfig()
 
-        # ── Shared components ───────────────────────────────────────
         self._llm = LLMClient(self._config.llm)
         self._embeddings = EmbeddingModel(self._config.embedding)
         self._vector_store = VectorStore(
@@ -57,14 +46,13 @@ class RAGPipeline:
             self._config.retriever, self._embeddings, self._vector_store
         )
 
-        # ── Agents ──────────────────────────────────────────────────
         self._guardrail = GuardrailAgent(self._config.guardrail, self._llm)
         self._generator = Generator(self._config.generator, self._llm)
         self._evaluator = EvaluatorAgent(self._config.evaluator, self._llm)
 
-        logger.info("RAG Pipeline initialized")
+        self._evaluator_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rag-evaluator")
 
-    # ── Ingestion ───────────────────────────────────────────────────
+        logger.info("RAG Pipeline initialized")
 
     def ingest(
         self,
@@ -72,7 +60,6 @@ class RAGPipeline:
         source: str = "manual",
         metadata: Optional[dict] = None,
     ) -> int:
-        """Ingest raw texts into the vector store. Returns chunk count."""
         docs = [
             Document(content=t, source=f"{source}_{i}", metadata=metadata or {})
             for i, t in enumerate(texts)
@@ -80,7 +67,6 @@ class RAGPipeline:
         return self.ingest_documents(docs)
 
     def ingest_documents(self, documents: list[Document]) -> int:
-        """Ingest Document objects: chunk → embed → store."""
         chunks = self._loader.chunk_documents(documents)
         if not chunks:
             logger.warning("No chunks produced from documents")
@@ -91,40 +77,62 @@ class RAGPipeline:
         self._vector_store.add(chunks, embeddings)
         return len(chunks)
 
-    # ── Query ───────────────────────────────────────────────────────
-
     def query(self, question: str) -> PipelineResult:
-        """
-        Run the full pipeline:
-          retrieve → guardrail → generate → evaluate → return
-        """
         t0 = time.perf_counter()
-        logger.info(f"Pipeline query: '{question[:80]}...'")
+        logger.info("Pipeline query: '%s...'", question[:80])
 
-        # ── Step 1: Retrieve ────────────────────────────────────────
         retrieved = self._retriever.retrieve(question)
-        logger.info(f"  Step 1 (Retrieve): {len(retrieved)} chunks")
+        logger.info("  Step 1 (Retrieve): %s chunks", len(retrieved))
 
-        # ── Step 2: Guardrail ───────────────────────────────────────
-        guardrail_output = self._guardrail.evaluate(question, retrieved)
-        filtered = guardrail_output.filtered_chunks
-        logger.info(
-            f"  Step 2 (Guardrail): {len(filtered)}/{len(retrieved)} chunks kept"
-        )
+        filtered = [
+            r for r in retrieved
+            if r.similarity_score >= self._config.retriever.similarity_threshold
+        ]
 
-        # ── Step 3: Generate ────────────────────────────────────────
+        guardrail_output = None
+
+        if self._config.runtime.use_guardrail:
+            guardrail_output = self._guardrail.evaluate(question, filtered)
+            filtered = guardrail_output.filtered_chunks
+            logger.info("  Step 2 (Guardrail): %s/%s chunks kept", len(filtered), len(retrieved))
+        else:
+            logger.info("  Step 2 (Threshold Gate): %s/%s chunks kept", len(filtered), len(retrieved))
+
         gen_output = self._generator.generate(question, filtered)
-        logger.info(f"  Step 3 (Generate): {len(gen_output.answer)} chars")
+        logger.info("  Step 3 (Generate): %s chars", len(gen_output.answer))
 
-        # ── Step 4: Evaluate ────────────────────────────────────────
-        eval_output = self._evaluator.evaluate(
-            answer=gen_output.answer,
-            context_chunks=filtered,
-            query=question,
+        evaluation_status = EvaluationStatus.PENDING
+        evaluation_error = None
+        evaluation_deferred = self._config.runtime.evaluator_mode != "sync"
+
+        placeholder_eval = EvaluatorOutput(
+            overall_consistency_score=0.0,
+            is_reliable=False,
+            claims=[],
+            summary="Evaluation scheduled asynchronously.",
+            processing_time_ms=0.0,
         )
-        logger.info(
-            f"  Step 4 (Evaluate): score={eval_output.overall_consistency_score:.2f}"
-        )
+        eval_output = placeholder_eval
+
+        if self._config.runtime.evaluator_mode == "sync":
+            eval_output, evaluation_status, evaluation_error = self._evaluate_safe(
+                answer=gen_output.answer,
+                context_chunks=filtered,
+                query=question,
+            )
+            logger.info(
+                "  Step 4 (Evaluate sync): status=%s, score=%.2f",
+                evaluation_status.value,
+                eval_output.overall_consistency_score,
+            )
+        else:
+            self._evaluator_executor.submit(
+                self._evaluate_safe,
+                answer=gen_output.answer,
+                context_chunks=filtered,
+                query=question,
+            )
+            logger.info("  Step 4 (Evaluate deferred): scheduled")
 
         total_ms = (time.perf_counter() - t0) * 1000
 
@@ -137,10 +145,30 @@ class RAGPipeline:
             guardrail=guardrail_output,
             generation=gen_output,
             evaluation=eval_output,
+            evaluation_status=evaluation_status,
+            evaluation_error=evaluation_error,
+            evaluation_deferred=evaluation_deferred,
             total_time_ms=total_ms,
         )
 
-    # ── Persistence ─────────────────────────────────────────────────
+    def _evaluate_safe(self, answer: str, context_chunks: list, query: str) -> Tuple[EvaluatorOutput, EvaluationStatus, Optional[str]]:
+        try:
+            eval_output = self._evaluator.evaluate(
+                answer=answer,
+                context_chunks=context_chunks,
+                query=query,
+            )
+            return eval_output, EvaluationStatus.COMPLETED, None
+        except Exception as exc:
+            logger.exception("Evaluator failed: %s", exc)
+            fallback = EvaluatorOutput(
+                overall_consistency_score=0.0,
+                is_reliable=False,
+                claims=[],
+                summary="Evaluator failed; answer returned without blocking.",
+                processing_time_ms=0.0,
+            )
+            return fallback, EvaluationStatus.FAILED, str(exc)
 
     def save(self, name: str = "default") -> None:
         self._vector_store.save(name)
