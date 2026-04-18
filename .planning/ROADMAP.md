@@ -1,4 +1,4 @@
-# RAG Pipeline Rebuild Roadmap
+﻿# RAG Pipeline Rebuild Roadmap
 
 Status: active
 Planning date: 2026-04-12
@@ -61,10 +61,13 @@ Deliverables:
 - Add tracing spans for retrieval, generation, evaluation.
 - Add basic quality regression checks in CI.
 
-Exit criteria:
-- Evaluation command produces reproducible metric report.
 - Every query trace includes component latency + retrieval metadata.
 - CI fails on agreed regression thresholds.
+
+Plans:
+- [ ] 02-01-PLAN.md - Build offline dataset and reproducible RAGAS evaluation command/report pipeline.
+- [ ] 02-02-PLAN.md - Add structured logging with correlation IDs and OpenTelemetry stage spans.
+- [ ] 02-03-PLAN.md - Add CI quality gates for faithfulness and answer relevancy with report artifacts.
 
 ### Phase 3 - Optimize Retrieval + Runtime (Week 5-6)
 Objective: improve answer quality and runtime efficiency.
@@ -106,7 +109,10 @@ Exit criteria:
 - Phase 4 relies on agreed metrics and tracing from Phase 2.
 
 ## Immediate Next Action
-Execute Phase 1 plans in .planning/phases/01-stabilize/01-01-PLAN.md, .planning/phases/01-stabilize/01-02-PLAN.md, and .planning/phases/01-stabilize/01-03-PLAN.md.
+Execute Phase 2 plans in .planning/phases/02-measure-observe/02-01-PLAN.md, .planning/phases/02-measure-observe/02-02-PLAN.md, and .planning/phases/02-measure-observe/02-03-PLAN.md.
 
 ## Completion Definition
 Milestone complete when all four phases are implemented and all v1 requirements in `.planning/REQUIREMENTS.md` are marked complete.
+
+
+
