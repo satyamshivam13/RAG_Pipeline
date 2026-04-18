@@ -61,6 +61,8 @@ Deliverables:
 - Add tracing spans for retrieval, generation, evaluation.
 - Add basic quality regression checks in CI.
 
+Exit criteria:
+- Evaluation command produces reproducible metric report.
 - Every query trace includes component latency + retrieval metadata.
 - CI fails on agreed regression thresholds.
 
@@ -113,6 +115,10 @@ Execute Phase 2 plans in .planning/phases/02-measure-observe/02-01-PLAN.md, .pla
 
 ## Completion Definition
 Milestone complete when all four phases are implemented and all v1 requirements in `.planning/REQUIREMENTS.md` are marked complete.
+
+
+
+
 
 
 
