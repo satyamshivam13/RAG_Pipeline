@@ -1,4 +1,4 @@
-"""
+﻿"""
 FAISS-backed vector store with:
   - Insert / batch-insert
   - Similarity search (cosine / IP / L2)
@@ -9,9 +9,8 @@ FAISS-backed vector store with:
 from __future__ import annotations
 import json
 import logging
-import os
 from pathlib import Path
-from typing import Optional, NamedTuple
+from typing import NamedTuple
 
 import faiss
 import numpy as np
@@ -23,25 +22,17 @@ logger = logging.getLogger(__name__)
 
 
 class _Candidate(NamedTuple):
-    """Internal-only container for MMR candidates. No validation constraints."""
     chunk: Chunk
-    raw_score: float       # May be negative — that's fine here
-    faiss_index: int       # Position in the FAISS index (for reconstruction)
+    raw_score: float
+    faiss_index: int
 
 
 class VectorStore:
     def __init__(self, config: VectorStoreConfig, dimension: int):
         self._config = config
         self._dimension = dimension
-
-        # Build the FAISS index
         self._index = self._build_index()
-
-        # Parallel list – FAISS stores vectors by integer ID; we map those
-        # back to Chunk objects.
         self._chunks: list[Chunk] = []
-
-    # ── Index construction ──────────────────────────────────────────
 
     def _build_index(self) -> faiss.Index:
         d = self._dimension
@@ -57,25 +48,27 @@ class VectorStore:
             index = faiss.IndexHNSWFlat(d, 32, faiss.METRIC_INNER_PRODUCT)
         else:
             raise ValueError(f"Unknown index type: {self._config.index_type}")
-        logger.info(f"FAISS index built: type={self._config.index_type}, dim={d}")
+        logger.info("FAISS index built: type=%s, dim=%s", self._config.index_type, d)
         return index
-
-    # ── Mutations ───────────────────────────────────────────────────
 
     def add(self, chunks: list[Chunk], embeddings: np.ndarray) -> None:
         """Add chunks with their pre-computed embeddings."""
-        assert len(chunks) == embeddings.shape[0], "Chunk/embedding count mismatch"
-        assert embeddings.shape[1] == self._dimension, "Dimension mismatch"
+        if len(chunks) != embeddings.shape[0]:
+            raise ValueError("Chunk/embedding count mismatch")
+        if embeddings.shape[1] != self._dimension:
+            raise ValueError(
+                "Vector dimension mismatch: "
+                f"got {embeddings.shape[1]}, expected {self._dimension}. "
+                "Rebuild the index or align the embedding model dimension."
+            )
 
         if hasattr(self._index, "is_trained") and not self._index.is_trained:
             logger.info("Training IVF index...")
             self._index.train(embeddings)
 
-        self._index.add(embeddings)
+        self._index.add(embeddings.astype(np.float32))
         self._chunks.extend(chunks)
-        logger.info(f"Added {len(chunks)} chunks. Total: {self._index.ntotal}")
-
-    # ── Queries ─────────────────────────────────────────────────────
+        logger.info("Added %s chunks. Total: %s", len(chunks), self._index.ntotal)
 
     def search(
         self,
@@ -83,15 +76,17 @@ class VectorStore:
         top_k: int = 10,
         threshold: float = 0.0,
     ) -> list[RetrievedChunk]:
-        """Brute-force top-k similarity search."""
         if self._index.ntotal == 0:
             return []
 
         query_embedding = query_embedding.reshape(1, -1).astype(np.float32)
-        scores, indices = self._index.search(
-            query_embedding, min(top_k, self._index.ntotal)
-        )
+        if query_embedding.shape[1] != self._dimension:
+            raise ValueError(
+                "Query dimension mismatch: "
+                f"got {query_embedding.shape[1]}, expected {self._dimension}."
+            )
 
+        scores, indices = self._index.search(query_embedding, min(top_k, self._index.ntotal))
         results = []
         for score, idx in zip(scores[0], indices[0]):
             if idx < 0:
@@ -99,10 +94,7 @@ class VectorStore:
             clamped = float(np.clip(score, 0.0, 1.0))
             if clamped < threshold:
                 continue
-            results.append(RetrievedChunk(
-                chunk=self._chunks[idx],
-                similarity_score=clamped,
-            ))
+            results.append(RetrievedChunk(chunk=self._chunks[idx], similarity_score=clamped))
         return results
 
     def mmr_search(
@@ -113,22 +105,19 @@ class VectorStore:
         lambda_mult: float = 0.7,
         threshold: float = 0.0,
     ) -> list[RetrievedChunk]:
-        """
-        Maximal Marginal Relevance: balances relevance to the query
-        with diversity among selected documents.
-
-        Internally uses raw (possibly negative) scores for correct MMR math.
-        Threshold and clamping are applied only at the final output stage.
-        """
         if self._index.ntotal == 0:
             return []
 
-        # ── Step 1: Fetch broad candidate set from FAISS ────────────
         query_embedding = query_embedding.reshape(1, -1).astype(np.float32)
+        if query_embedding.shape[1] != self._dimension:
+            raise ValueError(
+                "Query dimension mismatch: "
+                f"got {query_embedding.shape[1]}, expected {self._dimension}."
+            )
+
         actual_fetch = min(fetch_k, self._index.ntotal)
         scores, indices = self._index.search(query_embedding, actual_fetch)
 
-        # Store as internal _Candidate (no Pydantic validation, no clamping)
         candidates: list[_Candidate] = []
         for score, idx in zip(scores[0], indices[0]):
             if idx < 0:
@@ -142,14 +131,9 @@ class VectorStore:
         if not candidates:
             return []
 
-        # ── Step 2: Reconstruct embeddings for MMR math ─────────────
-        cand_embs = np.array([
-            self._reconstruct(c.faiss_index) for c in candidates
-        ])  # (num_candidates, D)
-
+        cand_embs = np.array([self._reconstruct(c.faiss_index) for c in candidates])
         query_sims = (cand_embs @ query_embedding.T).flatten()
 
-        # ── Step 3: MMR greedy selection ────────────────────────────
         selected_idxs: list[int] = []
         remaining = list(range(len(candidates)))
 
@@ -161,16 +145,11 @@ class VectorStore:
                 relevance = query_sims[i]
                 if selected_idxs:
                     sel_embs = cand_embs[selected_idxs]
-                    max_sim_to_selected = float(
-                        (cand_embs[i] @ sel_embs.T).max()
-                    )
+                    max_sim_to_selected = float((cand_embs[i] @ sel_embs.T).max())
                 else:
                     max_sim_to_selected = 0.0
 
-                mmr_score = (
-                    lambda_mult * relevance
-                    - (1 - lambda_mult) * max_sim_to_selected
-                )
+                mmr_score = lambda_mult * relevance - (1 - lambda_mult) * max_sim_to_selected
                 if mmr_score > best_score:
                     best_score = mmr_score
                     best_idx = i
@@ -178,47 +157,56 @@ class VectorStore:
             selected_idxs.append(best_idx)
             remaining.remove(best_idx)
 
-        # ── Step 4: NOW clamp and filter → safe RetrievedChunk ──────
         results = []
         for i in selected_idxs:
             clamped_score = float(np.clip(candidates[i].raw_score, 0.0, 1.0))
             if clamped_score < threshold:
                 continue
-            results.append(RetrievedChunk(
-                chunk=candidates[i].chunk,
-                similarity_score=clamped_score,
-            ))
+            results.append(RetrievedChunk(chunk=candidates[i].chunk, similarity_score=clamped_score))
 
         return results
-
-    # ── Persistence ─────────────────────────────────────────────────
 
     def save(self, name: str = "default") -> None:
         directory = Path(self._config.persist_dir) / name
         directory.mkdir(parents=True, exist_ok=True)
 
         faiss.write_index(self._index, str(directory / "index.faiss"))
-        with open(directory / "chunks.json", "w") as f:
-            json.dump([c.model_dump() for c in self._chunks], f)
-        logger.info(f"Vector store saved to {directory}")
+        payload = {
+            "dimension": self._dimension,
+            "chunks": [c.model_dump() for c in self._chunks],
+        }
+        with open(directory / "chunks.json", "w", encoding="utf-8") as f:
+            json.dump(payload, f)
+        logger.info("Vector store saved to %s", directory)
 
     def load(self, name: str = "default") -> None:
         directory = Path(self._config.persist_dir) / name
         self._index = faiss.read_index(str(directory / "index.faiss"))
-        with open(directory / "chunks.json") as f:
-            self._chunks = [Chunk(**c) for c in json.load(f)]
-        logger.info(f"Loaded {self._index.ntotal} vectors from {directory}")
+        if self._index.d != self._dimension:
+            raise ValueError(
+                "Persisted index dimension mismatch: "
+                f"index has {self._index.d}, but VectorStore expects {self._dimension}. "
+                "Rebuild the persisted index with the current embedding model."
+            )
 
-    # ── Internals ───────────────────────────────────────────────────
+        with open(directory / "chunks.json", encoding="utf-8") as f:
+            payload = json.load(f)
+            chunks = payload["chunks"] if isinstance(payload, dict) else payload
+            persisted_dim = payload.get("dimension") if isinstance(payload, dict) else self._dimension
+            if persisted_dim != self._dimension:
+                raise ValueError(
+                    "Persisted chunk metadata dimension mismatch: "
+                    f"got {persisted_dim}, expected {self._dimension}."
+                )
+            self._chunks = [Chunk(**c) for c in chunks]
+        logger.info("Loaded %s vectors from %s", self._index.ntotal, directory)
 
     def _reconstruct(self, idx: int) -> np.ndarray:
-        """Reconstruct a single vector from the index."""
         try:
             return self._index.reconstruct(idx)
         except RuntimeError:
             raise NotImplementedError(
-                "Reconstruction not supported for this index type. "
-                "Use 'flat' or 'hnsw' for MMR support."
+                "Reconstruction not supported for this index type. Use 'flat' or 'hnsw' for MMR support."
             )
 
     @property
