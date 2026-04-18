@@ -12,8 +12,6 @@ import time
 
 
 class Document(BaseModel):
-    """A raw document before chunking."""
-
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     content: str
     source: str = "unknown"
@@ -21,8 +19,6 @@ class Document(BaseModel):
 
 
 class Chunk(BaseModel):
-    """A chunk of a document, ready for embedding."""
-
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     document_id: str
     content: str
@@ -32,8 +28,6 @@ class Chunk(BaseModel):
 
 
 class RetrievedChunk(BaseModel):
-    """A chunk that came back from the vector store with a similarity score."""
-
     chunk: Chunk
     similarity_score: float = Field(ge=0.0, le=1.0)
 
@@ -45,8 +39,6 @@ class RelevanceVerdict(str, Enum):
 
 
 class ChunkRelevanceResult(BaseModel):
-    """The Guardrail Agent's judgement on a single chunk."""
-
     chunk_id: str
     verdict: RelevanceVerdict
     relevance_score: float = Field(ge=0.0, le=1.0)
@@ -54,8 +46,6 @@ class ChunkRelevanceResult(BaseModel):
 
 
 class GuardrailOutput(BaseModel):
-    """Full output of the Guardrail Agent."""
-
     query: str
     original_count: int
     filtered_chunks: list[RetrievedChunk]
@@ -66,13 +56,14 @@ class GuardrailOutput(BaseModel):
 
 
 class GeneratorOutput(BaseModel):
-    """The generated answer plus metadata."""
-
     answer: str
     query: str
     context_used: list[RetrievedChunk]
     model: str = ""
     processing_time_ms: float = 0.0
+    context_truncated: bool = False
+    warnings: list[str] = Field(default_factory=list)
+    context_token_estimate: int = 0
 
 
 class ClaimVerdict(str, Enum):
@@ -83,8 +74,6 @@ class ClaimVerdict(str, Enum):
 
 
 class ClaimEvaluation(BaseModel):
-    """Evaluation of a single claim extracted from the answer."""
-
     claim: str
     verdict: ClaimVerdict
     supporting_evidence: str = ""
@@ -92,8 +81,6 @@ class ClaimEvaluation(BaseModel):
 
 
 class EvaluatorOutput(BaseModel):
-    """Full evaluation of the generated answer."""
-
     overall_consistency_score: float = Field(ge=0.0, le=1.0)
     is_reliable: bool
     claims: list[ClaimEvaluation]
@@ -108,8 +95,6 @@ class EvaluationStatus(str, Enum):
 
 
 class PipelineResult(BaseModel):
-    """Everything the pipeline produces, end-to-end."""
-
     query: str
     answer: str
     is_reliable: bool

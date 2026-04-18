@@ -56,7 +56,6 @@ class LLMConfig:
     timeout: int = 60
 
     def __post_init__(self):
-        # Frozen dataclass workaround for setting api_key from env
         if self.api_key is None:
             object.__setattr__(self, "api_key", os.getenv("OPENAI_API_KEY"))
         if self.base_url is None:
@@ -68,8 +67,8 @@ class LLMConfig:
 @dataclass(frozen=True)
 class GuardrailConfig:
     model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "gpt-4o-mini"))
-    temperature: float = 0.0  # Deterministic for safety
-    relevance_threshold: float = 0.6  # 0-1 score; below = irrelevant
+    temperature: float = 0.0
+    relevance_threshold: float = 0.6
     max_tokens: int = 1024
 
 
@@ -78,6 +77,7 @@ class GeneratorConfig:
     model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "gpt-4o-mini"))
     temperature: float = 0.3
     max_tokens: int = 2048
+    max_context_tokens: int = 3000
     system_prompt: str = (
         "You are a precise, helpful assistant. Answer the user's question "
         "using ONLY the provided context. If the context doesn't contain "
@@ -90,14 +90,12 @@ class EvaluatorConfig:
     model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "gpt-4o-mini"))
     temperature: float = 0.0
     max_tokens: int = 1024
-    consistency_threshold: float = 0.7  # Below = flag as unreliable
+    consistency_threshold: float = 0.7
 
 
 @dataclass(frozen=True)
 class RuntimeConfig:
-    # Keep guardrail available for compatibility, but disabled by default in runtime path.
     use_guardrail: bool = False
-    # Phase 1 default: deferred evaluation. Set "sync" for deterministic debugging/tests.
     evaluator_mode: str = "deferred"  # "deferred" | "sync"
 
 

@@ -1,4 +1,4 @@
-"""Tests for the Generator (uses mocked LLM)."""
+﻿"""Tests for the Generator (uses mocked LLM)."""
 import pytest
 from unittest.mock import MagicMock
 
@@ -11,6 +11,7 @@ from models import RetrievedChunk, Chunk
 def mock_llm():
     llm = MagicMock()
     llm.chat.return_value = "Based on the context, the answer is 42."
+    llm.count_tokens.side_effect = lambda text: max(1, len(text) // 4)
     return llm
 
 
@@ -33,6 +34,7 @@ def test_generate_with_context(gen, mock_llm):
     assert "42" in output.answer
     assert output.query == "What is the answer?"
     assert len(output.context_used) == 1
+    assert output.context_truncated is False
     mock_llm.chat.assert_called_once()
 
 
@@ -45,7 +47,7 @@ def test_generate_no_context(gen):
 
 
 def test_generate_multiple_chunks(gen, mock_llm):
-    """Generator should pass all context chunks to the LLM."""
+    """Generator should pass all context chunks to the LLM when under budget."""
     chunks = [
         RetrievedChunk(
             chunk=Chunk(document_id="d1", content="Fact A."),
@@ -60,9 +62,26 @@ def test_generate_multiple_chunks(gen, mock_llm):
     output = gen.generate("Tell me facts", chunks)
 
     assert len(output.context_used) == 2
-    # Verify the LLM was called with a prompt containing both chunks
     call_args = mock_llm.chat.call_args
     user_msg = call_args.kwargs.get("messages", call_args[0][0] if call_args[0] else [])
     prompt_text = str(user_msg)
     assert "Fact A" in prompt_text
     assert "Fact B" in prompt_text
+
+
+def test_truncates_least_relevant_chunks_when_over_budget(mock_llm):
+    cfg = GeneratorConfig(max_context_tokens=20)
+    generator = Generator(cfg, mock_llm)
+
+    chunks = [
+        RetrievedChunk(chunk=Chunk(document_id="d1", content="A" * 120), similarity_score=0.95),
+        RetrievedChunk(chunk=Chunk(document_id="d2", content="B" * 120), similarity_score=0.55),
+        RetrievedChunk(chunk=Chunk(document_id="d3", content="C" * 120), similarity_score=0.25),
+    ]
+
+    output = generator.generate("q", chunks)
+
+    assert output.context_truncated is True
+    assert len(output.context_used) == 1
+    assert output.context_used[0].similarity_score == 0.95
+    assert any("Context truncated" in w for w in output.warnings)
