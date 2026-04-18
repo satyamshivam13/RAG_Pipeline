@@ -85,3 +85,37 @@ def test_truncates_least_relevant_chunks_when_over_budget(mock_llm):
     assert len(output.context_used) == 1
     assert output.context_used[0].similarity_score == 0.95
     assert any("Context truncated" in w for w in output.warnings)
+
+
+def test_long_context_truncation_is_deterministic(mock_llm):
+    cfg = GeneratorConfig(max_context_tokens=30)
+    generator = Generator(cfg, mock_llm)
+
+    chunks = [
+        RetrievedChunk(chunk=Chunk(document_id="d1", content="high" * 30), similarity_score=0.99),
+        RetrievedChunk(chunk=Chunk(document_id="d2", content="mid" * 30), similarity_score=0.60),
+        RetrievedChunk(chunk=Chunk(document_id="d3", content="low" * 30), similarity_score=0.20),
+    ]
+
+    first = generator.generate("q", chunks)
+    second = generator.generate("q", chunks)
+
+    assert [c.chunk.document_id for c in first.context_used] == [c.chunk.document_id for c in second.context_used]
+    assert first.context_truncated is True
+    assert second.context_truncated is True
+
+
+def test_long_context_path_returns_answer_with_truncation_warning(mock_llm):
+    cfg = GeneratorConfig(max_context_tokens=25)
+    generator = Generator(cfg, mock_llm)
+
+    chunks = [
+        RetrievedChunk(chunk=Chunk(document_id="d1", content="A" * 200), similarity_score=0.9),
+        RetrievedChunk(chunk=Chunk(document_id="d2", content="B" * 200), similarity_score=0.8),
+    ]
+
+    output = generator.generate("long question", chunks)
+
+    assert output.answer
+    assert output.context_truncated is True
+    assert any("Context truncated" in w for w in output.warnings)
