@@ -225,39 +225,42 @@ def main():
     config = PipelineConfig()
     pipeline = RAGPipeline(config)
 
-    # ── Ingest ──────────────────────────────────────────────────
-    console.print("[bold yellow]Ingesting knowledge base...[/bold yellow]")
-    n_chunks = pipeline.ingest(KNOWLEDGE_BASE, source="demo_kb")
-    console.print(f"[green]✓ Ingested {len(KNOWLEDGE_BASE)} documents → {n_chunks} chunks[/green]\n")
+    try:
+        # ── Ingest ──────────────────────────────────────────────────
+        console.print("[bold yellow]Ingesting knowledge base...[/bold yellow]")
+        n_chunks = pipeline.ingest(KNOWLEDGE_BASE, source="demo_kb")
+        console.print(f"[green]✓ Ingested {len(KNOWLEDGE_BASE)} documents → {n_chunks} chunks[/green]\n")
 
-    # ── Query Loop ──────────────────────────────────────────────
-    for query in DEMO_QUERIES:
-        result = pipeline.query(query)
-        display_result(result, console)
-        console.print()
-
-    # ── Interactive Mode ────────────────────────────────────────
-    console.print(Panel(
-        "Type a question and press Enter. Type 'quit' to exit.",
-        title="💬 Interactive Mode",
-        border_style="green",
-    ))
-
-    while True:
-        try:
-            question = console.input("[bold green]Question>[/bold green] ").strip()
-            if question.lower() in ("quit", "exit", "q"):
-                break
-            if not question:
-                continue
-
-            result = pipeline.query(question)
+        # ── Query Loop ──────────────────────────────────────────────
+        for query in DEMO_QUERIES:
+            result = pipeline.query(query)
             display_result(result, console)
+            console.print()
 
-        except KeyboardInterrupt:
-            break
+        # ── Interactive Mode ────────────────────────────────────────
+        console.print(Panel(
+            "Type a question and press Enter. Type 'quit' to exit.",
+            title="💬 Interactive Mode",
+            border_style="green",
+        ))
 
-    console.print("\n[bold]Goodbye! 👋[/bold]")
+        while True:
+            try:
+                question = console.input("[bold green]Question>[/bold green] ").strip()
+                if question.lower() in ("quit", "exit", "q"):
+                    break
+                if not question:
+                    continue
+
+                result = pipeline.query(question)
+                display_result(result, console)
+
+            except KeyboardInterrupt:
+                break
+
+        console.print("\n[bold]Goodbye! 👋[/bold]")
+    finally:
+        pipeline.close()
 
 
 if __name__ == "__main__":
