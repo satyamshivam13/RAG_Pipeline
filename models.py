@@ -1,4 +1,4 @@
-﻿"""
+"""
 Pydantic models for every data structure flowing through the pipeline.
 Strict typing catches integration bugs at boundaries.
 """

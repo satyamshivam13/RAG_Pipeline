@@ -1,4 +1,4 @@
-﻿import time
+import time
 from dataclasses import replace
 
 from config import PipelineConfig, RuntimeConfig
@@ -109,16 +109,18 @@ def test_query_default_mode_skips_guardrail_and_defers_evaluation(monkeypatch):
 
     cfg = PipelineConfig()
     pipe = RAGPipeline(cfg)
+    try:
+        started = time.perf_counter()
+        result = pipe.query("what?")
+        elapsed = time.perf_counter() - started
 
-    started = time.perf_counter()
-    result = pipe.query("what?")
-    elapsed = time.perf_counter() - started
-
-    assert _StubGuardrail.called == 0
-    assert result.evaluation_status == EvaluationStatus.PENDING
-    assert result.evaluation_deferred is True
-    assert result.consistency_score == 0.0
-    assert elapsed < 0.12
+        assert _StubGuardrail.called == 0
+        assert result.evaluation_status == EvaluationStatus.PENDING
+        assert result.evaluation_deferred is True
+        assert result.consistency_score == 0.0
+        assert elapsed < 0.12
+    finally:
+        pipe.close()
 
 
 def test_query_sync_mode_waits_for_evaluator(monkeypatch):
@@ -126,15 +128,17 @@ def test_query_sync_mode_waits_for_evaluator(monkeypatch):
 
     cfg = replace(PipelineConfig(), runtime=RuntimeConfig(evaluator_mode="sync"))
     pipe = RAGPipeline(cfg)
+    try:
+        started = time.perf_counter()
+        result = pipe.query("what?")
+        elapsed = time.perf_counter() - started
 
-    started = time.perf_counter()
-    result = pipe.query("what?")
-    elapsed = time.perf_counter() - started
-
-    assert result.evaluation_status == EvaluationStatus.COMPLETED
-    assert result.evaluation_deferred is False
-    assert result.consistency_score > 0.0
-    assert elapsed >= 0.14
+        assert result.evaluation_status == EvaluationStatus.COMPLETED
+        assert result.evaluation_deferred is False
+        assert result.consistency_score > 0.0
+        assert elapsed >= 0.14
+    finally:
+        pipe.close()
 
 
 def test_evaluator_failure_never_breaks_response_path(monkeypatch):
@@ -149,9 +153,11 @@ def test_evaluator_failure_never_breaks_response_path(monkeypatch):
 
     cfg = replace(PipelineConfig(), runtime=RuntimeConfig(evaluator_mode="sync"))
     pipe = RAGPipeline(cfg)
+    try:
+        result = pipe.query("what?")
 
-    result = pipe.query("what?")
-
-    assert result.answer == "stub answer"
-    assert result.evaluation_status == EvaluationStatus.FAILED
-    assert result.evaluation_error is not None
+        assert result.answer == "stub answer"
+        assert result.evaluation_status == EvaluationStatus.FAILED
+        assert result.evaluation_error is not None
+    finally:
+        pipe.close()

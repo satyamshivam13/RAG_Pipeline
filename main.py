@@ -1,4 +1,4 @@
-﻿"""
+"""
 Pipeline Orchestrator
 ---------------------
 Wires every component together and exposes a simple query() method.
@@ -53,6 +53,19 @@ class RAGPipeline:
         self._evaluator_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rag-evaluator")
 
         logger.info("RAG Pipeline initialized")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+        return False
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            logger.exception("Failed to close RAG pipeline during finalization")
 
     def ingest(
         self,
@@ -126,13 +139,15 @@ class RAGPipeline:
                 eval_output.overall_consistency_score,
             )
         else:
-            self._evaluator_executor.submit(
-                self._evaluate_safe,
-                answer=gen_output.answer,
-                context_chunks=filtered,
-                query=question,
-            )
-            logger.info("  Step 4 (Evaluate deferred): scheduled")
+            executor = self._evaluator_executor
+            if executor is not None:
+                executor.submit(
+                    self._evaluate_safe,
+                    answer=gen_output.answer,
+                    context_chunks=filtered,
+                    query=question,
+                )
+                logger.info("  Step 4 (Evaluate deferred): scheduled")
 
         total_ms = (time.perf_counter() - t0) * 1000
 
@@ -175,3 +190,15 @@ class RAGPipeline:
 
     def load(self, name: str = "default") -> None:
         self._vector_store.load(name)
+
+    def close(self) -> None:
+        executor = getattr(self, "_evaluator_executor", None)
+        if executor is None:
+            return
+
+        try:
+            executor.shutdown(wait=True)
+        except Exception:
+            logger.exception("Failed to shut down evaluator executor")
+        finally:
+            self._evaluator_executor = None
