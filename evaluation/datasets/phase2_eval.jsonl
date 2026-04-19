@@ -1,0 +1,3 @@
+{"id":"phase2-001","question":"What does RAG stand for?","ground_truth_answer":"Retrieval Augmented Generation","expected_context_ids":["ctx-rag-1"],"source_documents":["doc-rag-1"],"synthetic":false}
+{"id":"phase2-002","question":"What is a correlation ID used for in logs?","ground_truth_answer":"A correlation ID links logs and spans from one request across components.","expected_context_ids":["ctx-obs-1"],"source_documents":["doc-obs-1"],"synthetic":true}
+{"id":"phase2-003","question":"Why run offline evaluation in CI?","ground_truth_answer":"To catch quality regressions before changes are merged.","expected_context_ids":["ctx-ci-1"],"source_documents":["doc-ci-1"],"synthetic":true}

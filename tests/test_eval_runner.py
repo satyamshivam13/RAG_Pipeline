@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from evaluation.run_eval import METRIC_KEYS, run_evaluation
 from models import Chunk, GeneratorOutput, PipelineResult, RetrievedChunk, EvaluatorOutput
@@ -78,3 +79,20 @@ def test_run_eval_output_shape_is_stable(tmp_path, monkeypatch):
 
     assert first.keys() == second.keys()
     assert first["metrics"].keys() == second["metrics"].keys()
+
+
+def test_eval_cli_smoke_with_stubs(tmp_path, monkeypatch):
+    dataset = tmp_path / "dataset.jsonl"
+    report_path = tmp_path / "report.json"
+    _write_dataset(dataset)
+
+    monkeypatch.setattr("evaluation.run_eval.RAGPipeline", _StubPipeline)
+
+    report = run_evaluation(
+        dataset,
+        report_path,
+        now_provider=lambda: "2026-04-19T00:00:00Z",
+    )
+
+    assert Path(report_path).exists()
+    assert set(report["metrics"].keys()) == set(METRIC_KEYS)

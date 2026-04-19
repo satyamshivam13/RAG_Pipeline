@@ -63,3 +63,11 @@ def test_loader_preserves_file_order(tmp_path):
     rows = load_evaluation_dataset(dataset_path)
 
     assert [r.id for r in rows] == ["third", "first", "second"]
+
+
+def test_phase2_seed_dataset_exists_and_is_valid():
+    dataset_path = "evaluation/datasets/phase2_eval.jsonl"
+    rows = load_evaluation_dataset(dataset_path)
+
+    assert len(rows) >= 1
+    assert rows[0].id
