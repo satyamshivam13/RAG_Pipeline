@@ -8,3 +8,4 @@ python-dotenv>=1.0.0
 rich>=13.7.0
 tenacity>=8.2.0
 pytest>=8.0.0
+ragas>=0.2.0
