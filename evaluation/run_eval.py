@@ -118,9 +118,7 @@ def run_evaluation(
 ) -> dict:
     samples = load_evaluation_dataset(dataset_path)
 
-    if metric_evaluator is not None:
-        metrics = metric_evaluator(samples, None)  # type: ignore[arg-type]
-    elif live_mode:
+    if metric_evaluator is not None or live_mode:
         base_config = PipelineConfig()
         pipeline_config = replace(
             base_config,
@@ -131,7 +129,10 @@ def run_evaluation(
         )
         pipeline = RAGPipeline(pipeline_config)
         try:
-            metrics = _default_metric_evaluator(samples, pipeline)
+            if metric_evaluator is not None:
+                metrics = metric_evaluator(samples, pipeline)
+            else:
+                metrics = _default_metric_evaluator(samples, pipeline)
         finally:
             pipeline.close()
     else:

@@ -29,6 +29,7 @@ except Exception:  # pragma: no cover - optional dependency path
 _correlation_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "correlation_id", default=None
 )
+_tracer_provider_configured = False
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,10 @@ class ExporterSelection:
 
 def set_correlation_id(value: str) -> None:
     _correlation_id_var.set(value)
+
+
+def reset_correlation_id() -> None:
+    _correlation_id_var.set(None)
 
 
 def get_correlation_id() -> str | None:
@@ -65,8 +70,18 @@ def resolve_exporter_config(config: TelemetryConfig) -> ExporterSelection:
 def configure_tracer_provider(config: TelemetryConfig):
     """Configure OpenTelemetry tracer provider when dependencies are available."""
 
+    global _tracer_provider_configured
+
     if not config.telemetry_enabled or not OTEL_AVAILABLE:
         return None
+
+    if _tracer_provider_configured:
+        return trace.get_tracer_provider() if trace is not None else None
+
+    existing_provider = trace.get_tracer_provider() if trace is not None else None
+    if existing_provider is not None and isinstance(existing_provider, TracerProvider):
+        _tracer_provider_configured = True
+        return existing_provider
 
     selection = resolve_exporter_config(config)
     provider = TracerProvider(
@@ -80,6 +95,7 @@ def configure_tracer_provider(config: TelemetryConfig):
 
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
+    _tracer_provider_configured = True
     return provider
 
 

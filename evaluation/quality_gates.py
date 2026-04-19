@@ -17,8 +17,15 @@ def load_report(path: str | Path) -> dict:
     return payload
 
 
+def _get_metrics(report: dict) -> dict:
+    metrics = report.get("metrics")
+    if not isinstance(metrics, dict):
+        raise ValueError("Invalid report: missing metric keys: metrics")
+    return metrics
+
+
 def evaluate_quality_gates(report: dict) -> tuple[bool, list[str]]:
-    metrics = report["metrics"]
+    metrics = _get_metrics(report)
     missing = [key for key in ("faithfulness", "answer_relevancy", "context_precision", "context_recall") if key not in metrics]
     if missing:
         raise ValueError(f"Invalid report: missing metric keys: {', '.join(missing)}")

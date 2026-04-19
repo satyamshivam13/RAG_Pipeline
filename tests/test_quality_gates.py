@@ -37,3 +37,8 @@ def test_quality_gate_fails_when_answer_relevancy_below_threshold():
 def test_missing_metric_keys_raise_error():
     with pytest.raises(ValueError, match="missing metric keys"):
         evaluate_quality_gates({"metrics": {"faithfulness": 1.0}})
+
+
+def test_missing_metrics_object_raise_error():
+    with pytest.raises(ValueError, match="missing metric keys"):
+        evaluate_quality_gates({"phase": "02-measure-observe"})

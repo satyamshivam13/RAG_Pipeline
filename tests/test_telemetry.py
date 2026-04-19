@@ -1,8 +1,11 @@
+import pytest
+
 from config import TelemetryConfig
 from telemetry import (
     get_correlation_id,
     get_or_create_correlation_id,
     resolve_exporter_config,
+    reset_correlation_id as clear_correlation_id,
     set_correlation_id,
 )
 from dataclasses import replace
@@ -10,6 +13,12 @@ from dataclasses import replace
 from config import PipelineConfig, RuntimeConfig
 from main import RAGPipeline
 from models import Chunk, RetrievedChunk, GeneratorOutput, EvaluatorOutput
+
+
+@pytest.fixture(autouse=True)
+def reset_correlation_id():
+    yield
+    clear_correlation_id()
 
 
 class _StubEmbeddingModel:

@@ -84,6 +84,35 @@ def test_run_eval_output_shape_is_stable(tmp_path, monkeypatch):
     assert first["metrics"].keys() == second["metrics"].keys()
 
 
+def test_run_eval_passes_pipeline_to_custom_metric_evaluator(tmp_path, monkeypatch):
+    dataset = tmp_path / "dataset.jsonl"
+    report_path = tmp_path / "report.json"
+    _write_dataset(dataset)
+
+    monkeypatch.setattr("evaluation.run_eval.RAGPipeline", _StubPipeline)
+
+    seen = {}
+
+    def custom_metric_evaluator(samples, pipeline):
+        seen["pipeline"] = pipeline
+        return {
+            "faithfulness": 0.95,
+            "answer_relevancy": 0.96,
+            "context_precision": 0.97,
+            "context_recall": 0.98,
+        }
+
+    report = run_evaluation(
+        dataset,
+        report_path,
+        metric_evaluator=custom_metric_evaluator,
+        now_provider=lambda: "2026-04-19T00:00:00Z",
+    )
+
+    assert isinstance(seen["pipeline"], _StubPipeline)
+    assert report["metrics"]["faithfulness"] == 0.95
+
+
 def test_eval_cli_smoke_with_stubs(tmp_path, monkeypatch):
     dataset = tmp_path / "dataset.jsonl"
     report_path = tmp_path / "report.json"
