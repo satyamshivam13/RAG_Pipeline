@@ -7,6 +7,8 @@ Wires every component together and exposes a simple query() method.
 from __future__ import annotations
 import logging
 import time
+import contextvars
+from contextlib import nullcontext
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Tuple
 
@@ -102,137 +104,121 @@ class RAGPipeline:
         correlation_id = get_or_create_correlation_id()
         tracer = self._tracer
 
-        span_ctx = tracer.start_as_current_span("rag.query") if tracer else None
-        if span_ctx:
-            span_ctx.__enter__()
-            span = tracer.get_current_span()
-            span.set_attribute("correlation_id", correlation_id)
-            span.set_attribute("query_length", len(question))
+        query_ctx = tracer.start_as_current_span("rag.query") if tracer else nullcontext()
+        with query_ctx as query_span:
+            if query_span:
+                query_span.set_attribute("correlation_id", correlation_id)
+                query_span.set_attribute("query_length", len(question))
 
-        logger.info(
-            "query.start event=query_start correlation_id=%s stage=query query_length=%s",
-            correlation_id,
-            len(question),
-        )
-
-        retrieve_ctx = tracer.start_as_current_span("rag.retrieve") if tracer else None
-        if retrieve_ctx:
-            retrieve_ctx.__enter__()
-
-        retrieved = self._retriever.retrieve(question)
-
-        if retrieve_ctx:
-            retrieve_span = tracer.get_current_span()
-            retrieve_span.set_attribute("retrieved_count", len(retrieved))
-            retrieve_ctx.__exit__(None, None, None)
-        logger.info("  Step 1 (Retrieve): %s chunks", len(retrieved))
-
-        filtered = [
-            r for r in retrieved
-            if r.similarity_score >= self._config.retriever.similarity_threshold
-        ]
-
-        guardrail_output = None
-
-        if self._config.runtime.use_guardrail:
-            guardrail_output = self._guardrail.evaluate(question, filtered)
-            filtered = guardrail_output.filtered_chunks
-            logger.info("  Step 2 (Guardrail): %s/%s chunks kept", len(filtered), len(retrieved))
-        else:
-            logger.info("  Step 2 (Threshold Gate): %s/%s chunks kept", len(filtered), len(retrieved))
-
-        generate_ctx = tracer.start_as_current_span("rag.generate") if tracer else None
-        if generate_ctx:
-            generate_ctx.__enter__()
-
-        gen_output = self._generator.generate(question, filtered)
-
-        if generate_ctx:
-            generate_span = tracer.get_current_span()
-            generate_span.set_attribute("answer_chars", len(gen_output.answer))
-            generate_ctx.__exit__(None, None, None)
-        logger.info("  Step 3 (Generate): %s chars", len(gen_output.answer))
-
-        evaluation_status = EvaluationStatus.PENDING
-        evaluation_error = None
-        evaluation_deferred = self._config.runtime.evaluator_mode != "sync"
-
-        placeholder_eval = EvaluatorOutput(
-            overall_consistency_score=0.0,
-            is_reliable=False,
-            claims=[],
-            summary="Evaluation scheduled asynchronously.",
-            processing_time_ms=0.0,
-        )
-        eval_output = placeholder_eval
-
-        if self._config.runtime.evaluator_mode == "sync":
-            evaluate_ctx = tracer.start_as_current_span("rag.evaluate") if tracer else None
-            if evaluate_ctx:
-                evaluate_ctx.__enter__()
-
-            eval_output, evaluation_status, evaluation_error = self._evaluate_safe(
-                answer=gen_output.answer,
-                context_chunks=filtered,
-                query=question,
-            )
-
-            if evaluate_ctx:
-                evaluate_span = tracer.get_current_span()
-                evaluate_span.set_attribute("evaluation_status", evaluation_status.value)
-                evaluate_ctx.__exit__(None, None, None)
             logger.info(
-                "  Step 4 (Evaluate sync): status=%s, score=%.2f",
-                evaluation_status.value,
-                eval_output.overall_consistency_score,
+                "query.start event=query_start correlation_id=%s stage=query query_length=%s",
+                correlation_id,
+                len(question),
             )
-        else:
-            executor = self._evaluator_executor
-            if executor is not None:
-                executor.submit(
-                    self._evaluate_safe,
+
+            retrieve_ctx = tracer.start_as_current_span("rag.retrieve") if tracer else nullcontext()
+            with retrieve_ctx as retrieve_span:
+                retrieved = self._retriever.retrieve(question)
+                if retrieve_span:
+                    retrieve_span.set_attribute("retrieved_count", len(retrieved))
+            logger.info("  Step 1 (Retrieve): %s chunks", len(retrieved))
+
+            filtered = [
+                r for r in retrieved
+                if r.similarity_score >= self._config.retriever.similarity_threshold
+            ]
+
+            guardrail_output = None
+
+            if self._config.runtime.use_guardrail:
+                guardrail_output = self._guardrail.evaluate(question, filtered)
+                filtered = guardrail_output.filtered_chunks
+                logger.info("  Step 2 (Guardrail): %s/%s chunks kept", len(filtered), len(retrieved))
+            else:
+                logger.info("  Step 2 (Threshold Gate): %s/%s chunks kept", len(filtered), len(retrieved))
+
+            generate_ctx = tracer.start_as_current_span("rag.generate") if tracer else nullcontext()
+            with generate_ctx as generate_span:
+                gen_output = self._generator.generate(question, filtered)
+                if generate_span:
+                    generate_span.set_attribute("answer_chars", len(gen_output.answer))
+            logger.info("  Step 3 (Generate): %s chars", len(gen_output.answer))
+
+            evaluation_status = EvaluationStatus.PENDING
+            evaluation_error = None
+            evaluation_deferred = self._config.runtime.evaluator_mode != "sync"
+
+            placeholder_eval = EvaluatorOutput(
+                overall_consistency_score=0.0,
+                is_reliable=False,
+                claims=[],
+                summary="Evaluation scheduled asynchronously.",
+                processing_time_ms=0.0,
+            )
+            eval_output = placeholder_eval
+
+            if self._config.runtime.evaluator_mode == "sync":
+                eval_output, evaluation_status, evaluation_error = self._evaluate_safe(
                     answer=gen_output.answer,
                     context_chunks=filtered,
                     query=question,
                 )
-                logger.info("  Step 4 (Evaluate deferred): scheduled")
+                logger.info(
+                    "  Step 4 (Evaluate sync): status=%s, score=%.2f",
+                    evaluation_status.value,
+                    eval_output.overall_consistency_score,
+                )
+            else:
+                executor = self._evaluator_executor
+                if executor is not None:
+                    worker_context = contextvars.copy_context()
+                    executor.submit(
+                        worker_context.run,
+                        self._evaluate_safe,
+                        answer=gen_output.answer,
+                        context_chunks=filtered,
+                        query=question,
+                    )
+                    logger.info("  Step 4 (Evaluate deferred): scheduled")
 
-        total_ms = (time.perf_counter() - t0) * 1000
-        logger.info(
-            "query.complete event=query_complete correlation_id=%s stage=query duration_ms=%.2f retrieved_count=%s filtered_count=%s",
-            correlation_id,
-            total_ms,
-            len(retrieved),
-            len(filtered),
-        )
+            total_ms = (time.perf_counter() - t0) * 1000
+            logger.info(
+                "query.complete event=query_complete correlation_id=%s stage=query duration_ms=%.2f retrieved_count=%s filtered_count=%s",
+                correlation_id,
+                total_ms,
+                len(retrieved),
+                len(filtered),
+            )
 
-        if span_ctx:
-            span = tracer.get_current_span()
-            span.set_attribute("duration_ms", total_ms)
-            span_ctx.__exit__(None, None, None)
+            if query_span:
+                query_span.set_attribute("duration_ms", total_ms)
 
-        return PipelineResult(
-            query=question,
-            answer=gen_output.answer,
-            is_reliable=eval_output.is_reliable,
-            consistency_score=eval_output.overall_consistency_score,
-            retrieval=retrieved,
-            guardrail=guardrail_output,
-            generation=gen_output,
-            evaluation=eval_output,
-            evaluation_status=evaluation_status,
-            evaluation_error=evaluation_error,
-            evaluation_deferred=evaluation_deferred,
-            total_time_ms=total_ms,
-        )
+            return PipelineResult(
+                query=question,
+                answer=gen_output.answer,
+                is_reliable=eval_output.is_reliable,
+                consistency_score=eval_output.overall_consistency_score,
+                retrieval=retrieved,
+                guardrail=guardrail_output,
+                generation=gen_output,
+                evaluation=eval_output,
+                evaluation_status=evaluation_status,
+                evaluation_error=evaluation_error,
+                evaluation_deferred=evaluation_deferred,
+                total_time_ms=total_ms,
+            )
 
     def _evaluate_safe(self, answer: str, context_chunks: list, query: str) -> Tuple[EvaluatorOutput, EvaluationStatus, Optional[str]]:
         try:
-            eval_output = self._evaluator.evaluate(
-                answer=answer,
-                context_chunks=context_chunks,
-                query=query,
-            )
+            evaluate_ctx = self._tracer.start_as_current_span("rag.evaluate") if self._tracer else nullcontext()
+            with evaluate_ctx as evaluate_span:
+                eval_output = self._evaluator.evaluate(
+                    answer=answer,
+                    context_chunks=context_chunks,
+                    query=query,
+                )
+                if evaluate_span:
+                    evaluate_span.set_attribute("evaluation_status", EvaluationStatus.COMPLETED.value)
             return eval_output, EvaluationStatus.COMPLETED, None
         except Exception as exc:
             logger.exception("Evaluator failed: %s", exc)

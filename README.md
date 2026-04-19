@@ -36,9 +36,10 @@ pytest tests/ -v
 ### Programmatic pipeline usage
 
 ```python
+from config import PipelineConfig, RuntimeConfig
 from main import RAGPipeline
 
-pipeline = RAGPipeline()
+pipeline = RAGPipeline(PipelineConfig(runtime=RuntimeConfig(evaluator_mode="sync")))
 pipeline.ingest([
     "Quantum computers use qubits and superposition.",
     "Training large language models requires large compute budgets."

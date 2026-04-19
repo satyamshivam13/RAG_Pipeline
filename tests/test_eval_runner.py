@@ -18,6 +18,9 @@ def _write_dataset(path):
 
 
 class _StubPipeline:
+    def __init__(self, *_args, **_kwargs):
+        pass
+
     def query(self, question: str) -> PipelineResult:
         chunk = Chunk(id="ctx-1", document_id="doc-1", content="retrieval augmented generation", source="doc-1")
         retrieved = [RetrievedChunk(chunk=chunk, similarity_score=0.9)]
