@@ -79,6 +79,21 @@ print(len(chunks))
 pytest tests/ -v
 ```
 
+## Phase 2 Quality Regression
+
+Run the same flow locally that CI enforces:
+
+```bash
+python -m evaluation.run_eval --dataset evaluation/datasets/phase2_eval.jsonl --output evaluation/reports/phase2-latest.json
+python -m evaluation.quality_gates --report evaluation/reports/phase2-latest.json
+```
+
+Threshold policy:
+
+- faithfulness >= 0.90
+- answer_relevancy >= 0.95
+- context_precision and context_recall are reported as non-blocking diagnostics in this phase
+
 ## License
 
 No LICENSE file is currently present in this repository.
