@@ -100,6 +100,14 @@ class RuntimeConfig:
 
 
 @dataclass(frozen=True)
+class TelemetryConfig:
+    telemetry_enabled: bool = True
+    telemetry_service_name: str = "rag-pipeline"
+    telemetry_exporter: str = field(default_factory=lambda: os.getenv("TELEMETRY_EXPORTER", "console"))
+    telemetry_otlp_endpoint: Optional[str] = field(default_factory=lambda: os.getenv("TELEMETRY_OTLP_ENDPOINT"))
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     vector_store: VectorStoreConfig = field(default_factory=VectorStoreConfig)
@@ -110,3 +118,4 @@ class PipelineConfig:
     generator: GeneratorConfig = field(default_factory=GeneratorConfig)
     evaluator: EvaluatorConfig = field(default_factory=EvaluatorConfig)
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
+    telemetry: TelemetryConfig = field(default_factory=TelemetryConfig)

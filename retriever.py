@@ -11,6 +11,7 @@ from config import RetrieverConfig
 from embeddings import EmbeddingModel
 from vector_store import VectorStore
 from models import RetrievedChunk
+from telemetry import get_or_create_correlation_id
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +54,11 @@ class Retriever:
         results.sort(key=lambda r: r.similarity_score, reverse=True)
 
         elapsed = (time.perf_counter() - t0) * 1000
+        correlation_id = get_or_create_correlation_id()
         logger.info(
-            f"Retrieved {len(results)} chunks for query "
-            f"'{query[:60]}...' in {elapsed:.1f}ms"
+            "retriever.complete event=retrieve_done correlation_id=%s component=retriever operation=retrieve stage=retrieve duration_ms=%.2f retrieved_count=%s",
+            correlation_id,
+            elapsed,
+            len(results),
         )
         return results

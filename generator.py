@@ -11,6 +11,7 @@ import time
 from config import GeneratorConfig
 from llm_client import LLMClient
 from models import RetrievedChunk, GeneratorOutput
+from telemetry import get_or_create_correlation_id
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,13 @@ class Generator:
         )
 
         elapsed = (time.perf_counter() - t0) * 1000
-        logger.info("Generator produced %s chars in %.0fms", len(answer), elapsed)
+        correlation_id = get_or_create_correlation_id()
+        logger.info(
+            "generator.complete event=generate_done correlation_id=%s component=generator operation=generate stage=generate duration_ms=%.2f answer_chars=%s",
+            correlation_id,
+            elapsed,
+            len(answer),
+        )
 
         return GeneratorOutput(
             answer=answer,

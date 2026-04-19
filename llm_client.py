@@ -13,6 +13,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 import tiktoken
 
 from config import LLMConfig
+from telemetry import get_or_create_correlation_id
 
 logger = logging.getLogger(__name__)
 
@@ -61,10 +62,20 @@ class LLMClient:
         if response_format:
             kwargs["response_format"] = response_format
 
-        logger.debug(f"LLM request: model={model}, msgs={len(messages)}")
+        correlation_id = get_or_create_correlation_id()
+        logger.info(
+            "llm.request event=llm_request correlation_id=%s component=llm_client operation=chat model=%s messages=%s",
+            correlation_id,
+            model,
+            len(messages),
+        )
         response = self._client.chat.completions.create(**kwargs)
         text = response.choices[0].message.content.strip()
-        logger.debug(f"LLM response: {len(text)} chars")
+        logger.info(
+            "llm.response event=llm_response correlation_id=%s component=llm_client operation=chat chars=%s",
+            correlation_id,
+            len(text),
+        )
         return text
 
     def chat_json(

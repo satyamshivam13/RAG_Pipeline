@@ -25,6 +25,11 @@ from retriever import Retriever
 from guardrail_agent import GuardrailAgent
 from generator import Generator
 from evaluator_agent import EvaluatorAgent
+from telemetry import (
+    configure_tracer_provider,
+    get_or_create_correlation_id,
+    get_tracer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +54,8 @@ class RAGPipeline:
         self._guardrail = GuardrailAgent(self._config.guardrail, self._llm)
         self._generator = Generator(self._config.generator, self._llm)
         self._evaluator = EvaluatorAgent(self._config.evaluator, self._llm)
+        configure_tracer_provider(self._config.telemetry)
+        self._tracer = get_tracer("rag.main")
 
         self._evaluator_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rag-evaluator")
 
@@ -92,9 +99,32 @@ class RAGPipeline:
 
     def query(self, question: str) -> PipelineResult:
         t0 = time.perf_counter()
-        logger.info("Pipeline query: '%s...'", question[:80])
+        correlation_id = get_or_create_correlation_id()
+        tracer = self._tracer
+
+        span_ctx = tracer.start_as_current_span("rag.query") if tracer else None
+        if span_ctx:
+            span_ctx.__enter__()
+            span = tracer.get_current_span()
+            span.set_attribute("correlation_id", correlation_id)
+            span.set_attribute("query_length", len(question))
+
+        logger.info(
+            "query.start event=query_start correlation_id=%s stage=query query_length=%s",
+            correlation_id,
+            len(question),
+        )
+
+        retrieve_ctx = tracer.start_as_current_span("rag.retrieve") if tracer else None
+        if retrieve_ctx:
+            retrieve_ctx.__enter__()
 
         retrieved = self._retriever.retrieve(question)
+
+        if retrieve_ctx:
+            retrieve_span = tracer.get_current_span()
+            retrieve_span.set_attribute("retrieved_count", len(retrieved))
+            retrieve_ctx.__exit__(None, None, None)
         logger.info("  Step 1 (Retrieve): %s chunks", len(retrieved))
 
         filtered = [
@@ -111,7 +141,16 @@ class RAGPipeline:
         else:
             logger.info("  Step 2 (Threshold Gate): %s/%s chunks kept", len(filtered), len(retrieved))
 
+        generate_ctx = tracer.start_as_current_span("rag.generate") if tracer else None
+        if generate_ctx:
+            generate_ctx.__enter__()
+
         gen_output = self._generator.generate(question, filtered)
+
+        if generate_ctx:
+            generate_span = tracer.get_current_span()
+            generate_span.set_attribute("answer_chars", len(gen_output.answer))
+            generate_ctx.__exit__(None, None, None)
         logger.info("  Step 3 (Generate): %s chars", len(gen_output.answer))
 
         evaluation_status = EvaluationStatus.PENDING
@@ -128,11 +167,20 @@ class RAGPipeline:
         eval_output = placeholder_eval
 
         if self._config.runtime.evaluator_mode == "sync":
+            evaluate_ctx = tracer.start_as_current_span("rag.evaluate") if tracer else None
+            if evaluate_ctx:
+                evaluate_ctx.__enter__()
+
             eval_output, evaluation_status, evaluation_error = self._evaluate_safe(
                 answer=gen_output.answer,
                 context_chunks=filtered,
                 query=question,
             )
+
+            if evaluate_ctx:
+                evaluate_span = tracer.get_current_span()
+                evaluate_span.set_attribute("evaluation_status", evaluation_status.value)
+                evaluate_ctx.__exit__(None, None, None)
             logger.info(
                 "  Step 4 (Evaluate sync): status=%s, score=%.2f",
                 evaluation_status.value,
@@ -150,6 +198,18 @@ class RAGPipeline:
                 logger.info("  Step 4 (Evaluate deferred): scheduled")
 
         total_ms = (time.perf_counter() - t0) * 1000
+        logger.info(
+            "query.complete event=query_complete correlation_id=%s stage=query duration_ms=%.2f retrieved_count=%s filtered_count=%s",
+            correlation_id,
+            total_ms,
+            len(retrieved),
+            len(filtered),
+        )
+
+        if span_ctx:
+            span = tracer.get_current_span()
+            span.set_attribute("duration_ms", total_ms)
+            span_ctx.__exit__(None, None, None)
 
         return PipelineResult(
             query=question,
