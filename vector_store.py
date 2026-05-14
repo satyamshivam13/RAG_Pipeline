@@ -33,6 +33,9 @@ class VectorStore:
         self._dimension = dimension
         self._index = self._build_index()
         self._chunks: list[Chunk] = []
+        # Store embeddings alongside chunks to avoid faiss.reconstruct()
+        # This improves compatibility with IVF, PQ and other index types.
+        self._embeddings: np.ndarray | None = np.zeros((0, self._dimension), dtype=np.float32)
 
     def _build_index(self) -> faiss.Index:
         d = self._dimension
@@ -65,8 +68,13 @@ class VectorStore:
         if hasattr(self._index, "is_trained") and not self._index.is_trained:
             logger.info("Training IVF index...")
             self._index.train(embeddings)
-
         self._index.add(embeddings.astype(np.float32))
+        # persist embeddings in-memory for MMR and other operations
+        if self._embeddings is None or self._embeddings.size == 0:
+            self._embeddings = embeddings.astype(np.float32).copy()
+        else:
+            self._embeddings = np.vstack([self._embeddings, embeddings.astype(np.float32)])
+
         self._chunks.extend(chunks)
         logger.info("Added %s chunks. Total: %s", len(chunks), self._index.ntotal)
 
@@ -131,7 +139,32 @@ class VectorStore:
         if not candidates:
             return []
 
-        cand_embs = np.array([self._reconstruct(c.faiss_index) for c in candidates])
+        # Prefer stored embeddings to avoid using faiss.reconstruct(), which fails
+        # on some index types (e.g. PQ). If embeddings are unavailable, attempt
+        # to reconstruct per-candidate and gracefully fallback to top-k.
+        if self._embeddings is not None and self._embeddings.shape[0] >= len(self._chunks):
+            # Use stored embeddings by mapping faiss indices to rows
+            cand_embs = np.vstack([self._embeddings[c.faiss_index] for c in candidates])
+        else:
+            tried = []
+            failed = False
+            for c in candidates:
+                try:
+                    tried.append(self._reconstruct(c.faiss_index))
+                except NotImplementedError:
+                    failed = True
+                    break
+            if failed:
+                # graceful fallback: return top-k by raw score
+                logger.warning("MMR fallback: stored embeddings unavailable and reconstruct unsupported; returning top-k by raw score")
+                results = []
+                for cand in candidates[:top_k]:
+                    clamped_score = float(np.clip(cand.raw_score, 0.0, 1.0))
+                    if clamped_score < threshold:
+                        continue
+                    results.append(RetrievedChunk(chunk=cand.chunk, similarity_score=clamped_score))
+                return results
+            cand_embs = np.array(tried)
         query_sims = (cand_embs @ query_embedding.T).flatten()
 
         selected_idxs: list[int] = []
@@ -177,6 +210,12 @@ class VectorStore:
         }
         with open(directory / "chunks.json", "w", encoding="utf-8") as f:
             json.dump(payload, f)
+        # Save embeddings in a binary npy file for efficient load
+        try:
+            if self._embeddings is not None and self._embeddings.size:
+                np.save(str(directory / "embeddings.npy"), self._embeddings)
+        except Exception:
+            logger.exception("Failed to save embeddings.npy; continuing")
         logger.info("Vector store saved to %s", directory)
 
     def load(self, name: str = "default") -> None:
@@ -199,7 +238,31 @@ class VectorStore:
                     f"got {persisted_dim}, expected {self._dimension}."
                 )
             self._chunks = [Chunk(**c) for c in chunks]
-        logger.info("Loaded %s vectors from %s", self._index.ntotal, directory)
+        # Try to load stored embeddings.npy
+        emb_path = directory / "embeddings.npy"
+        if emb_path.exists():
+            try:
+                self._embeddings = np.load(str(emb_path))
+                if self._embeddings.shape[1] != self._dimension:
+                    raise ValueError("Persisted embeddings dimension mismatch")
+            except Exception:
+                logger.exception("Failed to load embeddings.npy; will attempt reconstruct fallback")
+                self._embeddings = None
+        else:
+            # Attempt reconstructing embeddings into memory for backward compatibility
+            try:
+                embs = []
+                for i in range(self._index.ntotal):
+                    embs.append(self._reconstruct(i))
+                if embs:
+                    self._embeddings = np.vstack(embs).astype(np.float32)
+                else:
+                    self._embeddings = np.zeros((0, self._dimension), dtype=np.float32)
+            except NotImplementedError:
+                logger.warning("Index does not support reconstruct(); embeddings not loaded. MMR will fallback to top-k when needed.")
+                self._embeddings = None
+
+        logger.info("Loaded %s vectors from %s (embeddings_loaded=%s)", self._index.ntotal, directory, self._embeddings is not None)
 
     def _reconstruct(self, idx: int) -> np.ndarray:
         try:
