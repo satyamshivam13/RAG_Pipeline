@@ -2,7 +2,9 @@
 
 ### Production-grade Retrieval-Augmented Generation pipeline for grounded, low-hallucination question answering.
 
-Engineering recruiter summary: Built as a modular RAG system with measurable quality (89% relevance, 850ms latency, 6% hallucination) and production-oriented architecture.
+**Update (May 2024):** FastAPI service layer now implemented! Deploy with Docker Compose or Kubernetes. See [DEPLOYMENT.md](docs/DEPLOYMENT.md) and [API.md](docs/API.md).
+
+Engineering recruiter summary: Built as a modular RAG system with measurable quality (89% relevance, 850ms latency, 6% hallucination) and production-oriented architecture with full REST API.
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Build](https://github.com/satyamshivam13/RAG_Pipeline/actions/workflows/quality-regression.yml/badge.svg)
@@ -219,11 +221,14 @@ From an engineering standpoint, semantic retrieval enables better knowledge util
 
 ## Future Improvements
 
-- Add production FastAPI endpoints for sync and streaming responses
-- Add Dockerfile and docker-compose for one-command local deployment
+- ✅ **Production FastAPI endpoints** (DONE - sync/streaming/health checks)
+- ✅ **Dockerfile and docker-compose** (DONE - multi-stage, optimized)
 - Add hybrid retrieval (dense + sparse) with weighted rank fusion
 - Improve reranker options and adaptive context packing
 - Add observability dashboards for latency, relevance, and failure analytics
+- Add GraphQL API option alongside REST
+- Implement request/response caching with Redis
+- Add persistent evaluation metrics and analytics pipeline
 
 ## Contribution
 

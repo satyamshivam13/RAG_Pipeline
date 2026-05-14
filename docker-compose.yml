@@ -1,0 +1,89 @@
+version: "3.8"
+
+services:
+  # ─────────────────────────────────────────────────────────────────────────
+  # RAG Pipeline FastAPI Service
+  # ─────────────────────────────────────────────────────────────────────────
+  rag-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-pipeline-api
+    ports:
+      - "8000:8000"
+    environment:
+      # LLM Configuration
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+
+      # Embeddings Configuration
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-large-en-v1.5}
+      - EMBEDDING_DEVICE=${EMBEDDING_DEVICE:-cpu}  # cpu | cuda
+
+      # Vector Store Configuration
+      - VECTOR_INDEX_TYPE=${VECTOR_INDEX_TYPE:-flat}  # flat | ivf | hnsw
+
+      # API Configuration
+      - RAG_API_TOKEN=${RAG_API_TOKEN:-}  # Optional bearer token
+      - RAG_AUTH_DISABLED=${RAG_AUTH_DISABLED:-false}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      - TRUSTED_HOSTS=${TRUSTED_HOSTS:-localhost,127.0.0.1}
+
+      # Telemetry Configuration
+      - TELEMETRY_ENABLED=${TELEMETRY_ENABLED:-true}
+      - TELEMETRY_EXPORTER=${TELEMETRY_EXPORTER:-console}
+      - TELEMETRY_OTLP_ENDPOINT=${TELEMETRY_OTLP_ENDPOINT:-}
+
+      # Python Configuration
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+
+    volumes:
+      # Persist vector store data
+      - ./vector_store_data:/app/vector_store_data
+      # Mount source code for development (optional - comment out for production)
+      - .:/app:cached
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    networks:
+      - rag-network
+
+    # Resource limits (adjust based on your hardware)
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4G
+        reservations:
+          cpus: "1"
+          memory: 2G
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Optional: Development Database/Logging Service
+  # Uncomment if you want to add observability (e.g., Jaeger, Prometheus)
+  # ─────────────────────────────────────────────────────────────────────────
+
+  # jaeger:
+  #   image: jaegertracing/all-in-one:latest
+  #   container_name: rag-jaeger
+  #   ports:
+  #     - "16686:16686"  # Jaeger UI
+  #     - "4317:4317"    # OTLP gRPC receiver
+  #     - "4318:4318"    # OTLP HTTP receiver
+  #   networks:
+  #     - rag-network
+
+networks:
+  rag-network:
+    driver: bridge
+
+volumes:
+  vector_store_data:
+    driver: local
