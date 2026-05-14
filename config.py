@@ -39,9 +39,12 @@ class RetrieverConfig:
 
 @dataclass(frozen=True)
 class ChunkingConfig:
-    chunk_size: int = 512  # Characters per chunk
-    chunk_overlap: int = 64  # Overlapping characters
-    min_chunk_size: int = 50  # Discard tiny tail chunks
+    chunk_size: int = 512  # Token budget per chunk for token-aware strategies
+    chunk_overlap: int = 64  # Overlapping tokens between adjacent chunks
+    min_chunk_size: int = 50  # Minimum trailing chunk size in tokens
+    strategy: str = "semantic"  # "semantic" | "token" | "legacy_char"
+    tokenizer_model: str = "gpt-4o-mini"
+    tokenizer_encoding: str = "cl100k_base"
 
 
 @dataclass(frozen=True)

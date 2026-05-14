@@ -16,7 +16,7 @@ The project uses Python dataclasses in `config.py` as the primary configuration 
 - `EmbeddingConfig`: model choice, dimension, device, batching.
 - `VectorStoreConfig`: FAISS index type and persistence settings.
 - `RetrieverConfig`: top-k, threshold, MMR behavior.
-- `ChunkingConfig`: chunk size/overlap/minimum chunk length.
+- `ChunkingConfig`: token-aware chunk size, overlap, strategy, tokenizer, and minimum tail length.
 - `LLMConfig`: provider endpoint and retry/timeouts.
 - `GuardrailConfig`, `GeneratorConfig`, `EvaluatorConfig`: stage-level model settings.
 - `RuntimeConfig`: stage toggles (`use_guardrail`) and evaluator execution mode.
@@ -42,8 +42,12 @@ The project uses Python dataclasses in `config.py` as the primary configuration 
 | `RetrieverConfig.similarity_threshold` | `0.3` |
 | `RetrieverConfig.use_mmr` | `True` |
 | `RetrieverConfig.mmr_top_k` | `5` |
-| `ChunkingConfig.chunk_size` | `512` |
-| `ChunkingConfig.chunk_overlap` | `64` |
+| `ChunkingConfig.chunk_size` | `512` tokens |
+| `ChunkingConfig.chunk_overlap` | `64` tokens |
+| `ChunkingConfig.min_chunk_size` | `50` tokens |
+| `ChunkingConfig.strategy` | `semantic` |
+| `ChunkingConfig.tokenizer_model` | `gpt-4o-mini` |
+| `ChunkingConfig.tokenizer_encoding` | `cl100k_base` |
 | `LLMConfig.default_model` | `gpt-4o-mini` |
 | `GuardrailConfig.relevance_threshold` | `0.6` |
 | `GeneratorConfig.max_context_tokens` | `3000` |
@@ -54,5 +58,13 @@ The project uses Python dataclasses in `config.py` as the primary configuration 
 - Create a local `.env` file from `.env.example` for developer machine values.
 - Override defaults via environment variables (for example, `LLM_MODEL`) per shell/session.
 - For test-only behavior, prefer `PipelineConfig` overrides in tests (see `tests/test_pipeline_phase1_runtime.py`) rather than mutating global config files.
+
+## Chunking Strategies
+
+- `semantic`: default RAG strategy. Packs paragraphs and sentences into token-budgeted chunks with bounded token overlap and per-chunk quality metrics.
+- `token`: fast sliding token window when strict throughput matters more than semantic boundaries.
+- `legacy_char`: backward-compatible character splitter for rollback and before/after comparison.
+
+Chunk quality metrics are stored on each chunk under `metadata["chunking"]["metrics"]`, including token count, sentence count, paragraph count, overlap tokens, budget utilization, semantic-boundary flags, and oversize status.
 
 <!-- VERIFY: Production deployment secret-management location is not discoverable from repository files. -->

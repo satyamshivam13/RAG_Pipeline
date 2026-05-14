@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from chunking import ChunkPlan, build_chunk_strategy
 from config import ChunkingConfig
 from models import Document, Chunk
 
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 class DocumentLoader:
     def __init__(self, config: ChunkingConfig):
         self._config = config
+        self._chunker = build_chunk_strategy(config)
 
     def load_text(self, text: str, source: str = "inline") -> Document:
         return Document(content=text, source=source)
@@ -29,42 +31,20 @@ class DocumentLoader:
         return [Document(content=t, source=f"{source}_{i}") for i, t in enumerate(texts)]
 
     def chunk_document(self, doc: Document) -> list[Chunk]:
-        """Split a document into overlapping chunks with semantic breakpoint preference."""
-        text = doc.content
+        """Split a document into configured token-aware chunks."""
         chunks: list[Chunk] = []
-        start = 0
-        idx = 0
+        plans = self._chunker.split(doc.content)
 
-        while start < len(text):
-            end = start + self._config.chunk_size
-            actual_end = self._find_break_point(text, start, end)
-
-            # Guard against non-progressing windows.
-            if actual_end <= start:
-                actual_end = min(len(text), start + self._config.chunk_size)
-                if actual_end <= start:
-                    break
-
-            chunk_text = text[start:actual_end].strip()
-
-            if len(chunk_text) >= self._config.min_chunk_size:
-                chunks.append(
-                    Chunk(
-                        document_id=doc.id,
-                        content=chunk_text,
-                        source=doc.source,
-                        chunk_index=idx,
-                        metadata=doc.metadata.copy(),
-                    )
+        for idx, plan in enumerate(plans):
+            chunks.append(
+                Chunk(
+                    document_id=doc.id,
+                    content=plan.content,
+                    source=doc.source,
+                    chunk_index=idx,
+                    metadata=self._metadata_with_chunk_quality(doc, plan),
                 )
-                idx += 1
-
-            if actual_end >= len(text):
-                break
-
-            # Maintain backward-compatible overlap semantics.
-            next_start = max(actual_end - self._config.chunk_overlap, start + 1)
-            start = next_start
+            )
 
         logger.debug("Document %s: %s chunks", doc.source, len(chunks))
         return chunks
@@ -76,24 +56,11 @@ class DocumentLoader:
         logger.info("Chunked %s docs to %s chunks", len(docs), len(all_chunks))
         return all_chunks
 
-    @staticmethod
-    def _find_break_point(text: str, start: int, end: int) -> int:
-        """Choose a semantically meaningful break near end, fallback to hard split."""
-        if end >= len(text):
-            return len(text)
-
-        search_region = text[start:end]
-
-        # Paragraph boundaries first, then sentence boundaries.
-        delimiters = ["\n\n", ".\n", "!\n", "?\n", ". ", "! ", "? ", "\n"]
-        for delim in delimiters:
-            last = search_region.rfind(delim)
-            if last != -1 and last > len(search_region) * 0.3:
-                return start + last + len(delim)
-
-        # Fallback: split at nearest space before hard limit.
-        space = search_region.rfind(" ")
-        if space != -1 and space > len(search_region) * 0.3:
-            return start + space + 1
-
-        return end
+    def _metadata_with_chunk_quality(self, doc: Document, plan: ChunkPlan) -> dict:
+        metadata = doc.metadata.copy()
+        metadata["chunking"] = {
+            "strategy": self._config.strategy,
+            "tokenizer_model": self._config.tokenizer_model,
+            "metrics": plan.metrics.as_dict(),
+        }
+        return metadata

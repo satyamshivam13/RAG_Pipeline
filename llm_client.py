@@ -6,6 +6,7 @@ Wraps the OpenAI SDK so the rest of the codebase never touches HTTP directly.
 from __future__ import annotations
 import json
 import logging
+import re
 from typing import Optional
 
 from openai import OpenAI
@@ -16,6 +17,15 @@ from config import LLMConfig
 from telemetry import get_or_create_correlation_id
 
 logger = logging.getLogger(__name__)
+_ENCODER_CACHE: dict[str, object] = {}
+_ENCODER_FALLBACKS: set[str] = set()
+
+
+class _RegexTokenCounter:
+    _TOKEN_RE = re.compile(r"\s+|[^\s]+", re.UNICODE)
+
+    def encode(self, text: str) -> list[str]:
+        return self._TOKEN_RE.findall(text)
 
 
 class LLMClient:
@@ -28,11 +38,23 @@ class LLMClient:
             base_url=config.base_url,
             timeout=config.timeout,
         )
-        # Token counter (falls back to cl100k_base for unknown models)
-        try:
-            self._encoder = tiktoken.encoding_for_model(config.default_model)
-        except KeyError:
-            self._encoder = tiktoken.get_encoding("cl100k_base")
+        # Token counter (falls back to an offline regex counter when tiktoken
+        # cannot resolve or load an encoding in restricted environments).
+        if config.default_model in _ENCODER_CACHE:
+            self._encoder = _ENCODER_CACHE[config.default_model]
+        elif config.default_model in _ENCODER_FALLBACKS:
+            self._encoder = _RegexTokenCounter()
+        else:
+            try:
+                self._encoder = tiktoken.encoding_for_model(config.default_model)
+                _ENCODER_CACHE[config.default_model] = self._encoder
+            except Exception:
+                try:
+                    self._encoder = tiktoken.get_encoding("cl100k_base")
+                    _ENCODER_CACHE[config.default_model] = self._encoder
+                except Exception:
+                    self._encoder = _RegexTokenCounter()
+                    _ENCODER_FALLBACKS.add(config.default_model)
 
     # ── Public API ──────────────────────────────────────────────────
 

@@ -25,7 +25,7 @@ graph TD
 
 ## Data Flow
 
-1. Documents are ingested via `RAGPipeline.ingest` or `RAGPipeline.ingest_documents`, chunked by `DocumentLoader`, embedded by `EmbeddingModel`, then stored in `VectorStore`.
+1. Documents are ingested via `RAGPipeline.ingest` or `RAGPipeline.ingest_documents`, chunked by `DocumentLoader` using configurable token-aware strategies, embedded by `EmbeddingModel`, then stored in `VectorStore`.
 2. A query enters `RAGPipeline.query`, which calls `Retriever.retrieve`.
 3. Retriever embeds the query and executes FAISS search (`search` or `mmr_search`) in `VectorStore`.
 4. Retrieved chunks are threshold-filtered and optionally passed through `GuardrailAgent.evaluate`.
@@ -43,6 +43,7 @@ graph TD
 - `Retriever` in `retriever.py`: embed-query and ranking orchestration.
 - `GuardrailAgent` in `guardrail_agent.py`: relevance and safety filtering using JSON LLM output.
 - `Generator` in `generator.py`: grounded answer generation with context token budgeting.
+- `chunking.py`: token-aware semantic, token-window, and legacy character chunk strategies plus chunk quality metrics.
 - `EvaluatorAgent` in `evaluator_agent.py`: factual consistency decomposition and scoring.
 - `PipelineResult` and related pydantic models in `models.py`: typed contracts between stages.
 
@@ -56,7 +57,8 @@ graph TD
 |- llm_client.py          # LLM transport and retries
 |- embeddings.py          # Embedding model wrapper
 |- vector_store.py        # FAISS storage and retrieval
-|- document_loader.py     # Loading and chunking
+|- document_loader.py     # Loading and ingestion-facing chunking API
+|- chunking.py            # Token-aware chunking strategies and metrics
 |- retriever.py           # Query retrieval path
 |- guardrail_agent.py     # Relevance and safety stage
 |- generator.py           # Answer generation stage
