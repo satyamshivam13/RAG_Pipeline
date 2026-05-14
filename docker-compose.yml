@@ -1,14 +1,13 @@
-version: "3.8"
+version: '3.8'
 
 services:
-  # ─────────────────────────────────────────────────────────────────────────
-  # RAG Pipeline FastAPI Service
-  # ─────────────────────────────────────────────────────────────────────────
   rag-api:
     build:
       context: .
       dockerfile: Dockerfile
+    image: rag-pipeline:latest
     container_name: rag-pipeline-api
+    restart: on-failure
     ports:
       - "8000:8000"
     environment:
@@ -19,13 +18,13 @@ services:
 
       # Embeddings Configuration
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-large-en-v1.5}
-      - EMBEDDING_DEVICE=${EMBEDDING_DEVICE:-cpu}  # cpu | cuda
+      - EMBEDDING_DEVICE=${EMBEDDING_DEVICE:-cpu}
 
       # Vector Store Configuration
-      - VECTOR_INDEX_TYPE=${VECTOR_INDEX_TYPE:-flat}  # flat | ivf | hnsw
+      - VECTOR_INDEX_TYPE=${VECTOR_INDEX_TYPE:-flat}
 
       # API Configuration
-      - RAG_API_TOKEN=${RAG_API_TOKEN:-}  # Optional bearer token
+      - RAG_API_TOKEN=${RAG_API_TOKEN:-}
       - RAG_AUTH_DISABLED=${RAG_AUTH_DISABLED:-false}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
       - TRUSTED_HOSTS=${TRUSTED_HOSTS:-localhost,127.0.0.1}
@@ -35,55 +34,41 @@ services:
       - TELEMETRY_EXPORTER=${TELEMETRY_EXPORTER:-console}
       - TELEMETRY_OTLP_ENDPOINT=${TELEMETRY_OTLP_ENDPOINT:-}
 
-      # Python Configuration
+      # Python runtime settings
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
 
     volumes:
-      # Persist vector store data
       - ./vector_store_data:/app/vector_store_data
-      # Mount source code for development (optional - comment out for production)
-      - .:/app:cached
+      - ./:/app:cached
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 20s
 
     networks:
       - rag-network
 
-    # Resource limits (adjust based on your hardware)
     deploy:
       resources:
         limits:
-          cpus: "2"
-          memory: 4G
+          cpus: '2.0'
+          memory: 4096M
         reservations:
-          cpus: "1"
-          memory: 2G
+          cpus: '0.5'
+          memory: 512M
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # Optional: Development Database/Logging Service
-  # Uncomment if you want to add observability (e.g., Jaeger, Prometheus)
-  # ─────────────────────────────────────────────────────────────────────────
-
-  # jaeger:
-  #   image: jaegertracing/all-in-one:latest
-  #   container_name: rag-jaeger
-  #   ports:
-  #     - "16686:16686"  # Jaeger UI
-  #     - "4317:4317"    # OTLP gRPC receiver
-  #     - "4318:4318"    # OTLP HTTP receiver
-  #   networks:
-  #     - rag-network
+volumes:
+  vector_store_data:
+    driver: local
 
 networks:
   rag-network:
     driver: bridge
 
-volumes:
-  vector_store_data:
-    driver: local
+# Notes:
+# - `vector_store_data` persists vectors between container restarts.
+# - Provide secrets via a `.env` file or your platform's secret manager.

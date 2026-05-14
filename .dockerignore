@@ -1,0 +1,21 @@
+# Ignore git and local files
+.git
+__pycache__
+*.pyc
+.pytest_cache
+.venv
+venv
+env
+ENV
+*.egg-info
+dist
+build
+node_modules
+.env
+tests
+docs
+.github
+
+# Avoid copying local editor config
+.vscode
+.idea

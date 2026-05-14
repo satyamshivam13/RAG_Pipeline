@@ -230,6 +230,46 @@ From an engineering standpoint, semantic retrieval enables better knowledge util
 - Implement request/response caching with Redis
 - Add persistent evaluation metrics and analytics pipeline
 
+## Docker & Local Deployment
+
+This repository includes a production-focused `Dockerfile` and `docker-compose.yml` to run the FastAPI service locally or in production.
+
+Quick start (build + run with Docker Compose):
+
+```bash
+# Copy example env and edit values (OPENAI_API_KEY required for full functionality)
+cp .env.example .env
+# Edit .env and set OPENAI_API_KEY and other values
+
+# Build and start the stack
+docker-compose up -d --build
+
+# Check container health
+docker-compose ps
+docker-compose logs -f rag-api
+
+# Access the API docs
+open http://localhost:8000/docs
+```
+
+Build single Docker image and run:
+
+```bash
+docker build -t rag-pipeline:latest .
+docker run --rm -p 8000:8000 \
+    -e OPENAI_API_KEY="$OPENAI_API_KEY" \
+    -e RAG_API_TOKEN="$RAG_API_TOKEN" \
+    -v $(pwd)/vector_store_data:/vector_store_data \
+    rag-pipeline:latest
+```
+
+Notes:
+- The Docker image uses a multi-stage build and a Python virtual environment to keep the runtime image small and reproducible.
+- The container runs as a non-root user (`app`) for improved security.
+- The `vector_store_data` volume is persisted on the host to retain indexed vectors between restarts.
+- `start.sh` is the entrypoint and will exec the provided CMD (default: `uvicorn api:app ...`).
+
+
 ## Contribution
 
 Contributions are welcome.
