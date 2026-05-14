@@ -437,7 +437,7 @@ Increase workers in `Dockerfile` or Docker Compose for higher concurrency:
 uvicorn api:app --workers 4
 
 # For 8+ core machines with uvloop installed
-uvicorn api:app --workers 8 --loop-impl uvloop
+uvicorn api:app --workers 8 --loop uvloop
 ```
 
 ### Vector Store Index
@@ -574,7 +574,7 @@ Logs are automatically structured with correlation IDs and component names:
 ### Out of Memory
 
 - Reduce vector store size or use index quantization
--- Reduce `chunking.chunk_size` in `config.py` (see [config.py](config.py#L1)) — lower the `ChunkingConfig.chunk_size` to reduce memory and context usage
+# Reduce `chunking.chunk_size` in `config.py` (see [config.py](config.py#L42)) — lower the `ChunkingConfig.chunk_size` to reduce memory and context usage
 - Use IVF index with quantization
 
 ---

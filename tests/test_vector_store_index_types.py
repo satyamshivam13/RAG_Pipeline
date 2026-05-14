@@ -9,8 +9,9 @@ from models import Chunk
 
 
 @pytest.mark.parametrize("index_type", ["flat", "ivf", "hnsw"])
-def test_mmr_on_index_types(index_type):
-    tmp = tempfile.mkdtemp()
+def test_mmr_on_index_types(index_type, tmp_path):
+    # use pytest tmp_path fixture which is cleaned up automatically
+    tmp = str(tmp_path)
     cfg = VectorStoreConfig(persist_dir=tmp, index_type=index_type, n_lists=2, n_probe=1)
     store = VectorStore(cfg, dimension=4)
 

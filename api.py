@@ -610,7 +610,7 @@ async def query(
             payload.query,
             enable_guardrail=payload.enable_guardrail,
             sync_evaluation=payload.sync_evaluation,
-            top_k=payload.top_k,
+            top_k=(payload.top_k or 10),
         )
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000

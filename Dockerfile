@@ -47,8 +47,9 @@ RUN mkdir -p /app/vector_store_data && chown -R app:app /app/vector_store_data
 # Copy venv and app from builder
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /build/app /app
-
-RUN chmod +x /app/start.sh || true
+# Ensure start.sh is explicitly present (fail fast during build if missing)
+COPY --from=builder /build/app/start.sh /app/start.sh
+RUN chmod +x /app/start.sh
 RUN chown -R app:app /app
 
 USER app

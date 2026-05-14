@@ -242,7 +242,8 @@ class VectorStore:
         emb_path = directory / "embeddings.npy"
         if emb_path.exists():
             try:
-                self._embeddings = np.load(str(emb_path))
+                # Disable pickle to avoid executing arbitrary code from .npy files
+                self._embeddings = np.load(str(emb_path), allow_pickle=False)
                 if self._embeddings.shape[1] != self._dimension:
                     raise ValueError("Persisted embeddings dimension mismatch")
             except Exception:
