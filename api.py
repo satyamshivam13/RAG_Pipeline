@@ -38,7 +38,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.openapi.utils import get_openapi
 from starlette.middleware.base import BaseHTTPMiddleware
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, ValidationError
+import secrets
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -229,7 +230,15 @@ async def verify_auth_token(authorization: Optional[str] = Header(None)) -> None
             detail="Invalid authorization scheme; use Bearer",
         )
 
-    if credentials != _auth_token:
+    # Compare tokens using constant-time comparison to avoid timing attacks
+    try:
+        credentials_normalized = str(credentials)
+        token_normalized = str(_auth_token)
+    except Exception:
+        credentials_normalized = credentials
+        token_normalized = _auth_token
+
+    if not secrets.compare_digest(credentials_normalized, token_normalized):
         logger.warning("Invalid authorization token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -481,11 +490,17 @@ async def ingest(
             message=f"Successfully ingested {chunks_ingested} chunks from {len(payload.texts)} texts",
         )
 
+    except (ValueError, ValidationError) as e:
+        logger.warning("ingest.client_error source=%s error=%s", payload.source, e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid ingest request: {str(e)}",
+        )
     except Exception as e:
         logger.exception("ingest.error source=%s error=%s", payload.source, e)
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Ingest failed: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ingest failed due to server error",
         )
 
 
@@ -499,6 +514,7 @@ async def query_stream_generator(
     pipeline: RAGPipeline,
     enable_guardrail: bool,
     sync_evaluation: bool,
+    top_k: int,
 ) -> AsyncGenerator[str, None]:
     """
     Streaming query generator.
@@ -507,8 +523,14 @@ async def query_stream_generator(
     try:
         logger.info("query_stream.start query_length=%s", len(query))
 
-        # Run query in thread to avoid blocking
-        result = await asyncio.to_thread(pipeline.query, query)
+        # Run query in thread to avoid blocking; pass request options through
+        result = await asyncio.to_thread(
+            pipeline.query,
+            query,
+            enable_guardrail=enable_guardrail,
+            sync_evaluation=sync_evaluation,
+            top_k=top_k,
+        )
 
         # Yield initial result
         intermediate = {
@@ -574,6 +596,7 @@ async def query(
                     pipeline,
                     payload.enable_guardrail,
                     payload.sync_evaluation,
+                    payload.top_k or 10,
                 ),
                 media_type="application/x-ndjson",
             )
@@ -581,8 +604,14 @@ async def query(
         # Otherwise, return full response
         start_time = time.perf_counter()
 
-        # Run query in thread pool to avoid blocking
-        result = await asyncio.to_thread(pipeline.query, payload.query)
+        # Run query in thread pool to avoid blocking; pass request options through
+        result = await asyncio.to_thread(
+            pipeline.query,
+            payload.query,
+            enable_guardrail=payload.enable_guardrail,
+            sync_evaluation=payload.sync_evaluation,
+            top_k=payload.top_k,
+        )
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
@@ -617,11 +646,20 @@ async def query(
             warnings=result.generation.warnings if result.generation else None,
         )
 
+    except HTTPException:
+        # Re-raise HTTPExceptions unchanged
+        raise
+    except (ValueError, ValidationError, TypeError) as e:
+        logger.warning("query.client_error query_length=%s error=%s", len(payload.query), e)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid query request: {str(e)}",
+        )
     except Exception as e:
         logger.exception("query.error query_length=%s error=%s", len(payload.query), e)
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Query failed: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
 

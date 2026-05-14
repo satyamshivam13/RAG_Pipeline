@@ -2,7 +2,7 @@
 
 ### Production-grade Retrieval-Augmented Generation pipeline for grounded, low-hallucination question answering.
 
-**Update (May 2024):** FastAPI service layer now implemented! Deploy with Docker Compose or Kubernetes. See [DEPLOYMENT.md](docs/DEPLOYMENT.md) and [API.md](docs/API.md).
+**Latest update:** FastAPI service layer now implemented! Deploy with Docker Compose or Kubernetes. See [DEPLOYMENT.md](docs/DEPLOYMENT.md) and [API.md](docs/API.md).
 
 Engineering recruiter summary: Built as a modular RAG system with measurable quality (89% relevance, 850ms latency, 6% hallucination) and production-oriented architecture with full REST API.
 
@@ -259,7 +259,7 @@ docker build -t rag-pipeline:latest .
 docker run --rm -p 8000:8000 \
     -e OPENAI_API_KEY="$OPENAI_API_KEY" \
     -e RAG_API_TOKEN="$RAG_API_TOKEN" \
-    -v $(pwd)/vector_store_data:/vector_store_data \
+    -v $(pwd)/vector_store_data:/app/vector_store_data \
     rag-pipeline:latest
 ```
 
@@ -267,7 +267,9 @@ Notes:
 - The Docker image uses a multi-stage build and a Python virtual environment to keep the runtime image small and reproducible.
 - The container runs as a non-root user (`app`) for improved security.
 - The `vector_store_data` volume is persisted on the host to retain indexed vectors between restarts.
-- `start.sh` is the entrypoint and will exec the provided CMD (default: `uvicorn api:app ...`).
+ - `start.sh` is the entrypoint and will exec the provided CMD. The image runs the app
+     under `gunicorn` by default for production process management (override via `GUNICORN_WORKERS`).
+ - The container healthcheck is a HTTP probe using `curl` against `/health`.
 
 
 ## Contribution

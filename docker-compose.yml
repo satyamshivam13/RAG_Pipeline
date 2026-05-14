@@ -39,8 +39,12 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
 
     volumes:
-      - ./vector_store_data:/app/vector_store_data
-      - ./:/app:cached
+      # Persist vector store using a named volume for portability
+      - vector_store_data:/app/vector_store_data
+
+      # NOTE: For local development, prefer using docker-compose.override.yml
+      # to bind-mount source code (e.g., - ./:/app) so production doesn't
+      # accidentally run with a host bind that overrides the built image.
 
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]

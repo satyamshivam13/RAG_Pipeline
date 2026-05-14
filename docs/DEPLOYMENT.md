@@ -149,6 +149,7 @@ curl -X POST http://localhost:8000/query \
 ```bash
 curl -X POST http://localhost:8000/query \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-token" \
   -d '{
     "query": "Your question?",
     "stream": true
@@ -272,7 +273,7 @@ curl -X POST http://localhost:8000/query \
 
 ```bash
 # Push to ECR
-aws ecr get-login-password | docker login --username AWS --password-stdin YOUR_ECR_URI
+aws ecr get-login-password --region YOUR_AWS_REGION | docker login --username AWS --password-stdin YOUR_ECR_URI
 docker tag rag-pipeline:latest YOUR_ECR_URI/rag-pipeline:latest
 docker push YOUR_ECR_URI/rag-pipeline:latest
 
@@ -304,6 +305,10 @@ spec:
         image: your-registry/rag-pipeline:latest
         ports:
         - containerPort: 8000
+        volumeMounts:
+        - name: vector-store
+          mountPath: /app/vector_store_data
+          readOnly: false
         env:
         - name: OPENAI_API_KEY
           valueFrom:
@@ -380,12 +385,13 @@ export VECTOR_INDEX_TYPE=ivf
 
 ### Scale Horizontally
 
-```docker-compose
-rag-api:
-  deploy:
-    replicas: 3  # Run 3 instances
-  ports:
-    - "8000-8002:8000"  # Map ports
+```bash
+# To scale locally with Docker Compose v1/legacy standalone mode:
+docker-compose up -d --scale rag-api=3
+
+# Note: Expose a single port per host. For multiple replicas behind a single host port,
+# use a reverse proxy/load balancer (e.g., nginx, Traefik) to distribute traffic to the
+# running containers or deploy to a platform that supports service discovery/load balancing.
 ```
 
 ---
@@ -459,7 +465,7 @@ export LLM_BASE_URL=http://localhost:8001/v1
 
 ```bash
 # Increase workers
-uvicorn api:app --workers 8 --loop uvloop
+uvicorn api:app --workers 8 --loop-impl uvloop
 
 # Use faster index
 export VECTOR_INDEX_TYPE=hnsw
@@ -491,6 +497,7 @@ export EMBEDDING_DEVICE=cuda
 ```python
 import requests
 import json
+from typing import List
 
 class RAGClient:
     def __init__(self, base_url: str, token: str = None):
@@ -508,7 +515,7 @@ class RAGClient:
         r = requests.get(f"{self.base_url}/health")
         return r.json()
     
-    def ingest(self, texts: list[str], source: str = "api"):
+    def ingest(self, texts: List[str], source: str = "api"):
         """Ingest documents."""
         payload = {"texts": texts, "source": source}
         r = requests.post(

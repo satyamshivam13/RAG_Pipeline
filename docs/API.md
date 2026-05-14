@@ -433,11 +433,11 @@ deploy:
 Increase workers in `Dockerfile` or Docker Compose for higher concurrency:
 
 ```bash
-# For 4+ core machines
-uvicorn api:app --workers 4 --worker-class uvicorn.workers.UvicornWorker
+# For 4+ core machines (development)
+uvicorn api:app --workers 4
 
-# For 8+ core machines with CUDA
-uvicorn api:app --workers 8 --loop uvloop
+# For 8+ core machines with uvloop installed
+uvicorn api:app --workers 8 --loop-impl uvloop
 ```
 
 ### Vector Store Index
@@ -574,7 +574,7 @@ Logs are automatically structured with correlation IDs and component names:
 ### Out of Memory
 
 - Reduce vector store size or use index quantization
-- Reduce chunk context window in config
+-- Reduce `chunking.chunk_size` in `config.py` (see [config.py](config.py#L1)) — lower the `ChunkingConfig.chunk_size` to reduce memory and context usage
 - Use IVF index with quantization
 
 ---
@@ -582,6 +582,7 @@ Logs are automatically structured with correlation IDs and component names:
 ## API Client Libraries
 
 ### Python
+Note: The `RAGClient` shown below is a hypothetical wrapper example (not included). You can instead use raw HTTP calls with `requests` as shown in other examples.
 ```python
 from rag_client import RAGClient
 
@@ -592,6 +593,7 @@ print(result.answer)
 ```
 
 ### JavaScript/Node.js
+Note: The `RAGClient` shown below is a hypothetical wrapper example (not included). Use raw `fetch`/`axios` calls to the HTTP API in production if you don't have a client library.
 ```javascript
 const client = new RAGClient("http://localhost:8000", "your-token");
 await client.ingest(["doc1", "doc2"], "docs");
