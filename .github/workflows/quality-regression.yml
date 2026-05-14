@@ -1,11 +1,36 @@
-name: quality-regression
+name: Evaluation
 
 on:
+  workflow_dispatch:
+    inputs:
+      live:
+        description: "Run against the live pipeline. Requires model/API credentials and cached model availability."
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    # Weekly regression signal without slowing every pull request.
+    - cron: "15 6 * * 1"
   pull_request:
+    types: [labeled, synchronize, reopened]
+
+concurrency:
+  group: evaluation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   evaluate-and-gate:
+    name: Optional quality regression
     runs-on: ubuntu-latest
+    timeout-minutes: 35
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      contains(github.event.pull_request.labels.*.name, 'run-evaluation')
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -14,22 +39,51 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install -r requirements.txt
 
       - name: Run offline evaluation
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.live) }}
         run: |
-          python -m evaluation.run_eval --dataset evaluation/datasets/phase2_eval.jsonl --output evaluation/reports/phase2-latest.json
+          python -m evaluation.run_eval \
+            --dataset evaluation/datasets/phase2_eval.jsonl \
+            --output evaluation/reports/phase2-latest.json
+
+      - name: Run live evaluation
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.live }}
+        run: |
+          python -m evaluation.run_eval \
+            --live \
+            --dataset evaluation/datasets/phase2_eval.jsonl \
+            --output evaluation/reports/phase2-latest.json
 
       - name: Enforce quality gates
         run: |
           python -m evaluation.quality_gates --report evaluation/reports/phase2-latest.json
 
       - name: Upload evaluation artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: phase2-eval-report
           path: evaluation/reports/phase2-latest.json
+          if-no-files-found: ignore
+
+      - name: Write evaluation summary
+        if: always()
+        run: |
+          {
+            echo "## Evaluation"
+            echo ""
+            echo "- Trigger: ${{ github.event_name }}"
+            echo "- Live mode: ${{ github.event_name == 'workflow_dispatch' && inputs.live }}"
+            echo "- Result: ${{ job.status }}"
+            echo "- Report: evaluation/reports/phase2-latest.json"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -87,3 +87,16 @@ Thumbs.db
 /graphify-out/
 *graphify-python-*.log
 evaluation/reports/
+
+# Additional common ignores
+.mypy_cache/
+.pytype/
+.pyre/
+.ipynb_checkpoints/
+.cache/
+coverage.xml
+coverage-html/
+.python-version
+pip-log.txt
+pip-delete-this-directory.txt
+docker-compose.override.yml

@@ -1,0 +1,42 @@
+[tool.black]
+line-length = 120
+target-version = ["py310", "py311"]
+include = '\.pyi?$'
+extend-exclude = '''
+(
+  ^/\.venv/
+  | ^/vector_store_data/
+)
+'''
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+pretty = true
+files = [
+  "api.py",
+  "chunking.py",
+  "config.py",
+  "document_loader.py",
+  "evaluation",
+  "generator.py",
+  "guardrail_agent.py",
+  "llm_client.py",
+  "main.py",
+  "models.py",
+  "retriever.py",
+  "telemetry.py",
+  "vector_store.py",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.bandit]
+exclude_dirs = [".venv", "tests", "vector_store_data"]
+skips = ["B101"]

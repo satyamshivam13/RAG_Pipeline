@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Fast formatting check: no files are modified in CI, Black only verifies.
+  format:
+    uses: ./.github/workflows/_python-check.yml
+    with:
+      check_name: black
+      install_command: python -m pip install "black>=24.0.0"
+      command: black --check --diff .
+
+  lint:
+    uses: ./.github/workflows/_python-check.yml
+    with:
+      check_name: flake8
+      install_command: python -m pip install "flake8>=7.0.0"
+      command: flake8 . --statistics --show-source
+
+  type-check:
+    uses: ./.github/workflows/_python-check.yml
+    with:
+      check_name: mypy
+      install_command: python -m pip install -r requirements-dev.txt
+      command: mypy
+
+  unit-tests:
+    uses: ./.github/workflows/_python-check.yml
+    with:
+      check_name: pytest
+      install_command: python -m pip install -r requirements-dev.txt
+      command: >
+        mkdir -p reports/pytest &&
+        pytest tests/
+        --ignore=tests/test_api.py
+        --junitxml=reports/pytest/junit.xml
+      artifact_path: reports/pytest/junit.xml
+
+  security-scan:
+    uses: ./.github/workflows/_python-check.yml
+    with:
+      check_name: bandit
+      install_command: python -m pip install "bandit[toml]>=1.7.8"
+      command: >
+        mkdir -p reports/security &&
+        bandit -r .
+        -c pyproject.toml
+        -f json
+        -o reports/security/bandit.json
+      artifact_path: reports/security/bandit.json
+
+  dependency-scan:
+    uses: ./.github/workflows/_python-check.yml
+    with:
+      check_name: safety
+      install_command: python -m pip install "safety>=3.0.0"
+      command: >
+        mkdir -p reports/security &&
+        safety check
+        --file requirements.txt
+        --full-report
+        --output json
+        > reports/security/safety.json
+      artifact_path: reports/security/safety.json

@@ -7,7 +7,8 @@
 Engineering recruiter summary: Built as a modular RAG system with measurable quality (89% relevance, 850ms latency, 6% hallucination) and production-oriented architecture with full REST API.
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
-![Build](https://github.com/satyamshivam13/RAG_Pipeline/actions/workflows/quality-regression.yml/badge.svg)
+![CI](https://github.com/satyamshivam13/RAG_Pipeline/actions/workflows/ci.yml/badge.svg)
+![Evaluation](https://github.com/satyamshivam13/RAG_Pipeline/actions/workflows/quality-regression.yml/badge.svg)
 ![License](https://img.shields.io/github/license/satyamshivam13/RAG_Pipeline)
 ![Docker](https://img.shields.io/badge/Docker-Supported-2563EB?logo=docker&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Ready-059669?logo=fastapi&logoColor=white)
