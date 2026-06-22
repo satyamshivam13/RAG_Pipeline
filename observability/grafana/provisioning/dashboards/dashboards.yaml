@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: RAG Pipeline
+    orgId: 1
+    folder: RAG Pipeline
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
