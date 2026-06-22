@@ -7,17 +7,24 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Optional
+import time
+from typing import Any, Optional, cast
 
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 import tiktoken
 
 from config import LLMConfig
-from telemetry import get_or_create_correlation_id
+from telemetry import (
+    add_counter,
+    get_or_create_correlation_id,
+    observe_duration,
+    set_span_attributes,
+    span_context_or_null,
+)
 
 logger = logging.getLogger(__name__)
-_ENCODER_CACHE: dict[str, object] = {}
+_ENCODER_CACHE: dict[str, Any] = {}
 _ENCODER_FALLBACKS: set[str] = set()
 
 
@@ -33,6 +40,7 @@ class LLMClient:
 
     def __init__(self, config: LLMConfig):
         self._config = config
+        self._encoder: Any
         self._client = OpenAI(
             api_key=config.api_key,
             base_url=config.base_url,
@@ -75,7 +83,7 @@ class LLMClient:
         """Send a chat completion request. Returns the assistant's text."""
         model = model or self._config.default_model
 
-        kwargs = dict(
+        kwargs: dict[str, Any] = dict(
             model=model,
             messages=messages,
             temperature=temperature,
@@ -91,8 +99,30 @@ class LLMClient:
             model,
             len(messages),
         )
-        response = self._client.chat.completions.create(**kwargs)
-        text = response.choices[0].message.content.strip()
+        t0 = time.perf_counter()
+        with span_context_or_null(
+            "rag.llm.chat",
+            {
+                "llm.provider": self._config.provider,
+                "llm.model": model,
+                "llm.message_count": len(messages),
+                "llm.max_tokens": max_tokens,
+            },
+            "rag.llm",
+        ) as span:
+            create = cast(Any, self._client.chat.completions.create)
+            response = create(**kwargs)
+            text = response.choices[0].message.content.strip()
+            elapsed_ms = observe_duration(
+                "rag_llm_latency_ms",
+                t0,
+                attributes={"provider": self._config.provider, "model": model},
+            )
+            add_counter(
+                "rag_llm_requests_total",
+                attributes={"provider": self._config.provider, "model": model, "status": "success"},
+            )
+            set_span_attributes(span, {"duration_ms": elapsed_ms, "llm.response_chars": len(text)})
         logger.info(
             "llm.response event=llm_response correlation_id=%s component=llm_client operation=chat chars=%s",
             correlation_id,

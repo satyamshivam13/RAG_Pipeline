@@ -9,14 +9,16 @@ FAISS-backed vector store with:
 from __future__ import annotations
 import json
 import logging
+import time
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import faiss
 import numpy as np
 
 from config import VectorStoreConfig
 from models import Chunk, RetrievedChunk
+from telemetry import add_counter, observe_duration, set_span_attributes, span_context_or_null
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +33,7 @@ class VectorStore:
     def __init__(self, config: VectorStoreConfig, dimension: int):
         self._config = config
         self._dimension = dimension
-        self._index = self._build_index()
+        self._index: Any = self._build_index()
         self._chunks: list[Chunk] = []
         # Store embeddings alongside chunks to avoid faiss.reconstruct()
         # This improves compatibility with IVF, PQ and other index types.
@@ -56,6 +58,7 @@ class VectorStore:
 
     def add(self, chunks: list[Chunk], embeddings: np.ndarray) -> None:
         """Add chunks with their pre-computed embeddings."""
+        t0 = time.perf_counter()
         if len(chunks) != embeddings.shape[0]:
             raise ValueError("Chunk/embedding count mismatch")
         if embeddings.shape[1] != self._dimension:
@@ -65,18 +68,30 @@ class VectorStore:
                 "Rebuild the index or align the embedding model dimension."
             )
 
-        if hasattr(self._index, "is_trained") and not self._index.is_trained:
-            logger.info("Training IVF index...")
-            self._index.train(embeddings)
-        self._index.add(embeddings.astype(np.float32))
-        # persist embeddings in-memory for MMR and other operations
-        if self._embeddings is None or self._embeddings.size == 0:
-            self._embeddings = embeddings.astype(np.float32).copy()
-        else:
-            self._embeddings = np.vstack([self._embeddings, embeddings.astype(np.float32)])
+        with span_context_or_null(
+            "rag.vector_store.add",
+            {"vector.index_type": self._config.index_type, "chunk.count": len(chunks)},
+            "rag.vector_store",
+        ) as span:
+            if hasattr(self._index, "is_trained") and not self._index.is_trained:
+                logger.info("Training IVF index...")
+                self._index.train(embeddings)
+            self._index.add(embeddings.astype(np.float32))
+            # persist embeddings in-memory for MMR and other operations
+            if self._embeddings is None or self._embeddings.size == 0:
+                self._embeddings = embeddings.astype(np.float32).copy()
+            else:
+                self._embeddings = np.vstack([self._embeddings, embeddings.astype(np.float32)])
 
-        self._chunks.extend(chunks)
-        logger.info("Added %s chunks. Total: %s", len(chunks), self._index.ntotal)
+            self._chunks.extend(chunks)
+            elapsed_ms = observe_duration(
+                "rag_vector_add_latency_ms",
+                t0,
+                attributes={"index_type": self._config.index_type, "chunk_count": len(chunks)},
+            )
+            add_counter("rag_vector_add_total", value=len(chunks), attributes={"index_type": self._config.index_type})
+            set_span_attributes(span, {"duration_ms": elapsed_ms, "vector.total": self._index.ntotal})
+            logger.info("Added %s chunks. Total: %s", len(chunks), self._index.ntotal)
 
     def search(
         self,
@@ -87,6 +102,7 @@ class VectorStore:
         if self._index.ntotal == 0:
             return []
 
+        t0 = time.perf_counter()
         query_embedding = query_embedding.reshape(1, -1).astype(np.float32)
         if query_embedding.shape[1] != self._dimension:
             raise ValueError(
@@ -94,15 +110,30 @@ class VectorStore:
                 f"got {query_embedding.shape[1]}, expected {self._dimension}."
             )
 
-        scores, indices = self._index.search(query_embedding, min(top_k, self._index.ntotal))
-        results = []
-        for score, idx in zip(scores[0], indices[0]):
-            if idx < 0:
-                continue
-            clamped = float(np.clip(score, 0.0, 1.0))
-            if clamped < threshold:
-                continue
-            results.append(RetrievedChunk(chunk=self._chunks[idx], similarity_score=clamped))
+        with span_context_or_null(
+            "rag.vector_store.search",
+            {"vector.index_type": self._config.index_type, "search.top_k": top_k},
+            "rag.vector_store",
+        ) as span:
+            scores, indices = self._index.search(query_embedding, min(top_k, self._index.ntotal))
+            results = []
+            for score, idx in zip(scores[0], indices[0]):
+                if idx < 0:
+                    continue
+                clamped = float(np.clip(score, 0.0, 1.0))
+                if clamped < threshold:
+                    continue
+                results.append(RetrievedChunk(chunk=self._chunks[idx], similarity_score=clamped))
+            elapsed_ms = observe_duration(
+                "rag_vector_search_latency_ms",
+                t0,
+                attributes={"index_type": self._config.index_type, "mode": "similarity", "result_count": len(results)},
+            )
+            add_counter(
+                "rag_vector_search_total",
+                attributes={"index_type": self._config.index_type, "mode": "similarity"},
+            )
+            set_span_attributes(span, {"result.count": len(results), "duration_ms": elapsed_ms})
         return results
 
     def mmr_search(
@@ -116,6 +147,7 @@ class VectorStore:
         if self._index.ntotal == 0:
             return []
 
+        t0 = time.perf_counter()
         query_embedding = query_embedding.reshape(1, -1).astype(np.float32)
         if query_embedding.shape[1] != self._dimension:
             raise ValueError(
@@ -123,79 +155,119 @@ class VectorStore:
                 f"got {query_embedding.shape[1]}, expected {self._dimension}."
             )
 
-        actual_fetch = min(fetch_k, self._index.ntotal)
-        scores, indices = self._index.search(query_embedding, actual_fetch)
+        with span_context_or_null(
+            "rag.vector_store.mmr_search",
+            {"vector.index_type": self._config.index_type, "search.fetch_k": fetch_k, "search.top_k": top_k},
+            "rag.vector_store",
+        ) as span:
+            actual_fetch = min(fetch_k, self._index.ntotal)
+            scores, indices = self._index.search(query_embedding, actual_fetch)
 
-        candidates: list[_Candidate] = []
-        for score, idx in zip(scores[0], indices[0]):
-            if idx < 0:
-                continue
-            candidates.append(_Candidate(
-                chunk=self._chunks[idx],
-                raw_score=float(score),
-                faiss_index=int(idx),
-            ))
+            candidates: list[_Candidate] = []
+            for score, idx in zip(scores[0], indices[0]):
+                if idx < 0:
+                    continue
+                candidates.append(_Candidate(
+                    chunk=self._chunks[idx],
+                    raw_score=float(score),
+                    faiss_index=int(idx),
+                ))
 
-        if not candidates:
-            return []
+            if not candidates:
+                observe_duration(
+                    "rag_vector_search_latency_ms",
+                    t0,
+                    attributes={"index_type": self._config.index_type, "mode": "mmr", "result_count": 0},
+                )
+                return []
 
-        # Prefer stored embeddings to avoid using faiss.reconstruct(), which fails
-        # on some index types (e.g. PQ). If embeddings are unavailable, attempt
-        # to reconstruct per-candidate and gracefully fallback to top-k.
-        if self._embeddings is not None and self._embeddings.shape[0] >= len(self._chunks):
-            # Use stored embeddings by mapping faiss indices to rows
-            cand_embs = np.vstack([self._embeddings[c.faiss_index] for c in candidates])
-        else:
-            tried = []
-            failed = False
-            for c in candidates:
-                try:
-                    tried.append(self._reconstruct(c.faiss_index))
-                except NotImplementedError:
-                    failed = True
-                    break
-            if failed:
-                # graceful fallback: return top-k by raw score
-                logger.warning("MMR fallback: stored embeddings unavailable and reconstruct unsupported; returning top-k by raw score")
-                results = []
-                for cand in candidates[:top_k]:
-                    clamped_score = float(np.clip(cand.raw_score, 0.0, 1.0))
-                    if clamped_score < threshold:
-                        continue
-                    results.append(RetrievedChunk(chunk=cand.chunk, similarity_score=clamped_score))
-                return results
-            cand_embs = np.array(tried)
-        query_sims = (cand_embs @ query_embedding.T).flatten()
+            # Prefer stored embeddings to avoid using faiss.reconstruct(), which fails
+            # on some index types (e.g. PQ). If embeddings are unavailable, attempt
+            # to reconstruct per-candidate and gracefully fallback to top-k.
+            if self._embeddings is not None and self._embeddings.shape[0] >= len(self._chunks):
+                # Use stored embeddings by mapping faiss indices to rows
+                cand_embs = np.vstack([self._embeddings[c.faiss_index] for c in candidates])
+            else:
+                tried = []
+                failed = False
+                for c in candidates:
+                    try:
+                        tried.append(self._reconstruct(c.faiss_index))
+                    except NotImplementedError:
+                        failed = True
+                        break
+                if failed:
+                    # graceful fallback: return top-k by raw score
+                    logger.warning(
+                        "MMR fallback: stored embeddings unavailable and reconstruct unsupported; "
+                        "returning top-k by raw score"
+                    )
+                    results = []
+                    for cand in candidates[:top_k]:
+                        clamped_score = float(np.clip(cand.raw_score, 0.0, 1.0))
+                        if clamped_score < threshold:
+                            continue
+                        results.append(RetrievedChunk(chunk=cand.chunk, similarity_score=clamped_score))
+                    elapsed_ms = observe_duration(
+                        "rag_vector_search_latency_ms",
+                        t0,
+                        attributes={
+                            "index_type": self._config.index_type,
+                            "mode": "mmr_fallback",
+                            "result_count": len(results),
+                        },
+                    )
+                    add_counter(
+                        "rag_vector_search_total",
+                        attributes={"index_type": self._config.index_type, "mode": "mmr_fallback"},
+                    )
+                    set_span_attributes(
+                        span,
+                        {"result.count": len(results), "duration_ms": elapsed_ms, "mmr.fallback": True},
+                    )
+                    return results
+                cand_embs = np.array(tried)
+            query_sims = (cand_embs @ query_embedding.T).flatten()
 
-        selected_idxs: list[int] = []
-        remaining = list(range(len(candidates)))
+            selected_idxs: list[int] = []
+            remaining = list(range(len(candidates)))
 
-        while len(selected_idxs) < top_k and remaining:
-            best_idx = -1
-            best_score = -float("inf")
+            while len(selected_idxs) < top_k and remaining:
+                best_idx = -1
+                best_score = -float("inf")
 
-            for i in remaining:
-                relevance = query_sims[i]
-                if selected_idxs:
-                    sel_embs = cand_embs[selected_idxs]
-                    max_sim_to_selected = float((cand_embs[i] @ sel_embs.T).max())
-                else:
-                    max_sim_to_selected = 0.0
+                for i in remaining:
+                    relevance = query_sims[i]
+                    if selected_idxs:
+                        sel_embs = cand_embs[selected_idxs]
+                        max_sim_to_selected = float((cand_embs[i] @ sel_embs.T).max())
+                    else:
+                        max_sim_to_selected = 0.0
 
-                mmr_score = lambda_mult * relevance - (1 - lambda_mult) * max_sim_to_selected
-                if mmr_score > best_score:
-                    best_score = mmr_score
-                    best_idx = i
+                    mmr_score = lambda_mult * relevance - (1 - lambda_mult) * max_sim_to_selected
+                    if mmr_score > best_score:
+                        best_score = mmr_score
+                        best_idx = i
 
-            selected_idxs.append(best_idx)
-            remaining.remove(best_idx)
+                selected_idxs.append(best_idx)
+                remaining.remove(best_idx)
 
-        results = []
-        for i in selected_idxs:
-            clamped_score = float(np.clip(candidates[i].raw_score, 0.0, 1.0))
-            if clamped_score < threshold:
-                continue
-            results.append(RetrievedChunk(chunk=candidates[i].chunk, similarity_score=clamped_score))
+            results = []
+            for i in selected_idxs:
+                clamped_score = float(np.clip(candidates[i].raw_score, 0.0, 1.0))
+                if clamped_score < threshold:
+                    continue
+                results.append(RetrievedChunk(chunk=candidates[i].chunk, similarity_score=clamped_score))
+            elapsed_ms = observe_duration(
+                "rag_vector_search_latency_ms",
+                t0,
+                attributes={"index_type": self._config.index_type, "mode": "mmr", "result_count": len(results)},
+            )
+            add_counter("rag_vector_search_total", attributes={"index_type": self._config.index_type, "mode": "mmr"})
+            set_span_attributes(
+                span,
+                {"result.count": len(results), "candidate.count": len(candidates), "duration_ms": elapsed_ms},
+            )
 
         return results
 
@@ -243,9 +315,10 @@ class VectorStore:
         if emb_path.exists():
             try:
                 # Disable pickle to avoid executing arbitrary code from .npy files
-                self._embeddings = np.load(str(emb_path), allow_pickle=False)
-                if self._embeddings.shape[1] != self._dimension:
+                loaded_embeddings = np.load(str(emb_path), allow_pickle=False)
+                if loaded_embeddings.ndim != 2 or loaded_embeddings.shape[1] != self._dimension:
                     raise ValueError("Persisted embeddings dimension mismatch")
+                self._embeddings = loaded_embeddings
             except Exception:
                 logger.exception("Failed to load embeddings.npy; will attempt reconstruct fallback")
                 self._embeddings = None
@@ -260,10 +333,18 @@ class VectorStore:
                 else:
                     self._embeddings = np.zeros((0, self._dimension), dtype=np.float32)
             except NotImplementedError:
-                logger.warning("Index does not support reconstruct(); embeddings not loaded. MMR will fallback to top-k when needed.")
+                logger.warning(
+                    "Index does not support reconstruct(); embeddings not loaded. "
+                    "MMR will fallback to top-k when needed."
+                )
                 self._embeddings = None
 
-        logger.info("Loaded %s vectors from %s (embeddings_loaded=%s)", self._index.ntotal, directory, self._embeddings is not None)
+        logger.info(
+            "Loaded %s vectors from %s (embeddings_loaded=%s)",
+            self._index.ntotal,
+            directory,
+            self._embeddings is not None,
+        )
 
     def _reconstruct(self, idx: int) -> np.ndarray:
         try:

@@ -11,7 +11,7 @@ import time
 from config import GeneratorConfig
 from llm_client import LLMClient
 from models import RetrievedChunk, GeneratorOutput
-from telemetry import get_or_create_correlation_id
+from telemetry import add_counter, get_or_create_correlation_id, record_histogram
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +29,15 @@ class Generator:
                 "I don't have enough relevant information in the provided "
                 "knowledge base to answer this question reliably."
             )
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            record_histogram("rag_generation_latency_ms", elapsed_ms, attributes={"context": "empty"})
+            add_counter("rag_generation_requests_total", attributes={"status": "empty_context"})
             return GeneratorOutput(
                 answer=answer,
                 query=query,
                 context_used=[],
                 model=self._config.model,
-                processing_time_ms=(time.perf_counter() - t0) * 1000,
+                processing_time_ms=elapsed_ms,
                 context_token_estimate=0,
             )
 
@@ -71,9 +74,16 @@ class Generator:
         )
 
         elapsed = (time.perf_counter() - t0) * 1000
+        record_histogram(
+            "rag_generation_latency_ms",
+            elapsed,
+            attributes={"context_truncated": truncated_count > 0, "selected_count": len(selected_chunks)},
+        )
+        add_counter("rag_generation_requests_total", attributes={"status": "success"})
         correlation_id = get_or_create_correlation_id()
         logger.info(
-            "generator.complete event=generate_done correlation_id=%s component=generator operation=generate stage=generate duration_ms=%.2f answer_chars=%s",
+            "generator.complete event=generate_done correlation_id=%s "
+            "component=generator operation=generate stage=generate duration_ms=%.2f answer_chars=%s",
             correlation_id,
             elapsed,
             len(answer),

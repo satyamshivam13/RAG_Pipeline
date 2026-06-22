@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from typing import Optional, AsyncGenerator
 
@@ -47,6 +48,16 @@ from slowapi.errors import RateLimitExceeded
 from config import PipelineConfig
 from main import RAGPipeline
 from models import RetrievedChunk
+from telemetry import (
+    add_counter,
+    configure_observability,
+    get_current_span_context,
+    record_histogram,
+    reset_correlation_id,
+    set_correlation_id,
+    set_span_attributes,
+    span_context_or_null,
+)
 
 # ────────────────────────────────────────────────────────────────────────────
 # Logging Configuration
@@ -182,6 +193,7 @@ async def lifespan(app: FastAPI):
 
     try:
         _config = PipelineConfig()
+        configure_observability(_config.telemetry)
         _pipeline = RAGPipeline(_config)
         logger.info("RAG pipeline initialized successfully")
     except Exception as e:
@@ -268,10 +280,46 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     """
     async def dispatch(self, request: Request, call_next) -> Response:
         start_time = time.perf_counter()
-        request_id = request.headers.get("x-request-id", "")
+        request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        set_correlation_id(request_id)
+        attributes = {
+            "http.request.method": request.method,
+            "url.path": request.url.path,
+            "http.route": request.url.path,
+            "correlation_id": request_id,
+        }
 
         try:
-            response = await call_next(request)
+            with span_context_or_null("http.request", attributes, "rag.api") as span:
+                response = await call_next(request)
+                elapsed_ms = (time.perf_counter() - start_time) * 1000
+                set_span_attributes(
+                    span,
+                    {
+                        "http.response.status_code": response.status_code,
+                        "duration_ms": elapsed_ms,
+                    },
+                )
+                record_histogram(
+                    "rag_http_request_latency_ms",
+                    elapsed_ms,
+                    attributes={
+                        "method": request.method,
+                        "path": request.url.path,
+                        "status_code": response.status_code,
+                    },
+                )
+                add_counter(
+                    "rag_http_requests_total",
+                    attributes={
+                        "method": request.method,
+                        "path": request.url.path,
+                        "status_code": response.status_code,
+                    },
+                )
+                span_context = get_current_span_context()
+                if span_context:
+                    response.headers["x-trace-id"] = span_context["trace_id"]
             elapsed_ms = (time.perf_counter() - start_time) * 1000
             logger.info(
                 "http.request method=%s path=%s status=%s latency_ms=%.2f request_id=%s",
@@ -285,6 +333,15 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             return response
         except Exception as e:
             elapsed_ms = (time.perf_counter() - start_time) * 1000
+            record_histogram(
+                "rag_http_request_latency_ms",
+                elapsed_ms,
+                attributes={"method": request.method, "path": request.url.path, "status_code": 500},
+            )
+            add_counter(
+                "rag_http_requests_total",
+                attributes={"method": request.method, "path": request.url.path, "status_code": 500},
+            )
             logger.error(
                 "http.error method=%s path=%s latency_ms=%.2f error=%s request_id=%s",
                 request.method,
@@ -294,6 +351,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 request_id,
             )
             raise
+        finally:
+            reset_correlation_id()
 
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -350,9 +409,12 @@ app = FastAPI(
 
 # Add middleware (order matters - add in reverse order of execution)
 app.add_middleware(LoggingMiddleware)
+_trusted_hosts = [host.strip() for host in os.getenv("TRUSTED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
+if "testserver" not in _trusted_hosts:
+    _trusted_hosts.append("testserver")
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=os.getenv("TRUSTED_HOSTS", "localhost,127.0.0.1").split(","),
+    allowed_hosts=_trusted_hosts,
 )
 app.add_middleware(
     CORSMiddleware,

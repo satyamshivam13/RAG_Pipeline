@@ -8,9 +8,8 @@ from __future__ import annotations
 import logging
 import time
 import contextvars
-from contextlib import nullcontext
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple, cast
 
 from config import PipelineConfig
 from models import (
@@ -28,9 +27,13 @@ from guardrail_agent import GuardrailAgent
 from generator import Generator
 from evaluator_agent import EvaluatorAgent
 from telemetry import (
-    configure_tracer_provider,
+    add_counter,
+    configure_observability,
     get_or_create_correlation_id,
-    get_tracer,
+    observe_duration,
+    record_histogram,
+    set_span_attributes,
+    span_context_or_null,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,7 +48,7 @@ class RAGPipeline:
         self._llm = LLMClient(self._config.llm)
         self._embeddings = EmbeddingModel(self._config.embedding)
         self._vector_store = VectorStore(
-            self._config.vector_store,
+            cast(Any, self._config.vector_store),
             dimension=self._embeddings.dimension,
         )
         self._loader = DocumentLoader(self._config.chunking)
@@ -56,8 +59,7 @@ class RAGPipeline:
         self._guardrail = GuardrailAgent(self._config.guardrail, self._llm)
         self._generator = Generator(self._config.generator, self._llm)
         self._evaluator = EvaluatorAgent(self._config.evaluator, self._llm)
-        configure_tracer_provider(self._config.telemetry)
-        self._tracer = get_tracer("rag.main")
+        configure_observability(self._config.telemetry)
 
         self._evaluator_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rag-evaluator")
 
@@ -89,26 +91,32 @@ class RAGPipeline:
         return self.ingest_documents(docs)
 
     def ingest_documents(self, documents: list[Document]) -> int:
-        chunks = self._loader.chunk_documents(documents)
-        if not chunks:
-            logger.warning("No chunks produced from documents")
-            return 0
+        t0 = time.perf_counter()
+        with span_context_or_null("rag.ingest", {"document.count": len(documents)}, "rag.main") as span:
+            chunks = self._loader.chunk_documents(documents)
+            if not chunks:
+                logger.warning("No chunks produced from documents")
+                add_counter("rag_ingest_requests_total", attributes={"status": "empty"})
+                return 0
 
-        texts = [c.content for c in chunks]
-        embeddings = self._embeddings.embed(texts)
-        self._vector_store.add(chunks, embeddings)
-        return len(chunks)
+            texts = [c.content for c in chunks]
+            embeddings = self._embeddings.embed(texts)
+            self._vector_store.add(chunks, embeddings)
+            elapsed_ms = observe_duration(
+                "rag_ingest_latency_ms",
+                t0,
+                attributes={"chunk_count": len(chunks), "document_count": len(documents)},
+            )
+            add_counter("rag_ingest_requests_total", attributes={"status": "success"})
+            set_span_attributes(span, {"chunk.count": len(chunks), "duration_ms": elapsed_ms})
+            return len(chunks)
 
     def query(self, question: str) -> PipelineResult:
         t0 = time.perf_counter()
         correlation_id = get_or_create_correlation_id()
-        tracer = self._tracer
-
-        query_ctx = tracer.start_as_current_span("rag.query") if tracer else nullcontext()
-        with query_ctx as query_span:
+        with span_context_or_null("rag.query", {"query.length": len(question)}, "rag.main") as query_span:
             if query_span:
-                query_span.set_attribute("correlation_id", correlation_id)
-                query_span.set_attribute("query_length", len(question))
+                set_span_attributes(query_span, {"correlation_id": correlation_id})
 
             logger.info(
                 "query.start event=query_start correlation_id=%s stage=query query_length=%s",
@@ -116,11 +124,9 @@ class RAGPipeline:
                 len(question),
             )
 
-            retrieve_ctx = tracer.start_as_current_span("rag.retrieve") if tracer else nullcontext()
-            with retrieve_ctx as retrieve_span:
+            with span_context_or_null("rag.retrieve", tracer_name="rag.main") as retrieve_span:
                 retrieved = self._retriever.retrieve(question)
-                if retrieve_span:
-                    retrieve_span.set_attribute("retrieved_count", len(retrieved))
+                set_span_attributes(retrieve_span, {"retrieved.count": len(retrieved)})
             logger.info("  Step 1 (Retrieve): %s chunks", len(retrieved))
 
             filtered = [
@@ -137,11 +143,9 @@ class RAGPipeline:
             else:
                 logger.info("  Step 2 (Threshold Gate): %s/%s chunks kept", len(filtered), len(retrieved))
 
-            generate_ctx = tracer.start_as_current_span("rag.generate") if tracer else nullcontext()
-            with generate_ctx as generate_span:
+            with span_context_or_null("rag.generate", tracer_name="rag.main") as generate_span:
                 gen_output = self._generator.generate(question, filtered)
-                if generate_span:
-                    generate_span.set_attribute("answer_chars", len(gen_output.answer))
+                set_span_attributes(generate_span, {"answer.chars": len(gen_output.answer)})
             logger.info("  Step 3 (Generate): %s chars", len(gen_output.answer))
 
             evaluation_status = EvaluationStatus.PENDING
@@ -182,16 +186,26 @@ class RAGPipeline:
                     logger.info("  Step 4 (Evaluate deferred): scheduled")
 
             total_ms = (time.perf_counter() - t0) * 1000
+            record_histogram(
+                "rag_query_latency_ms",
+                total_ms,
+                attributes={
+                    "retrieved_count": len(retrieved),
+                    "filtered_count": len(filtered),
+                    "evaluator_mode": self._config.runtime.evaluator_mode,
+                },
+            )
+            add_counter("rag_query_requests_total", attributes={"status": "success"})
             logger.info(
-                "query.complete event=query_complete correlation_id=%s stage=query duration_ms=%.2f retrieved_count=%s filtered_count=%s",
+                "query.complete event=query_complete correlation_id=%s "
+                "stage=query duration_ms=%.2f retrieved_count=%s filtered_count=%s",
                 correlation_id,
                 total_ms,
                 len(retrieved),
                 len(filtered),
             )
 
-            if query_span:
-                query_span.set_attribute("duration_ms", total_ms)
+            set_span_attributes(query_span, {"duration_ms": total_ms})
 
             return PipelineResult(
                 query=question,
@@ -208,17 +222,20 @@ class RAGPipeline:
                 total_time_ms=total_ms,
             )
 
-    def _evaluate_safe(self, answer: str, context_chunks: list, query: str) -> Tuple[EvaluatorOutput, EvaluationStatus, Optional[str]]:
+    def _evaluate_safe(
+        self,
+        answer: str,
+        context_chunks: list,
+        query: str,
+    ) -> Tuple[EvaluatorOutput, EvaluationStatus, Optional[str]]:
         try:
-            evaluate_ctx = self._tracer.start_as_current_span("rag.evaluate") if self._tracer else nullcontext()
-            with evaluate_ctx as evaluate_span:
+            with span_context_or_null("rag.evaluate", tracer_name="rag.main") as evaluate_span:
                 eval_output = self._evaluator.evaluate(
                     answer=answer,
                     context_chunks=context_chunks,
                     query=query,
                 )
-                if evaluate_span:
-                    evaluate_span.set_attribute("evaluation_status", EvaluationStatus.COMPLETED.value)
+                set_span_attributes(evaluate_span, {"evaluation.status": EvaluationStatus.COMPLETED.value})
             return eval_output, EvaluationStatus.COMPLETED, None
         except Exception as exc:
             logger.exception("Evaluator failed: %s", exc)
