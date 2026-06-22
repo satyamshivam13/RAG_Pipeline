@@ -56,6 +56,7 @@ The pipeline processes PDF content into chunked, embedded, and indexed knowledge
 - Retrieval path compatible with FAISS and Chroma-style vector stores
 - Reranking stage before final answer generation
 - Guardrail and evaluator layers for quality and reliability checks
+- OpenTelemetry traces, metrics, and structured logs with local Grafana/Prometheus examples
 - Clean module boundaries for production-oriented extension and testing
 
 ## Architecture

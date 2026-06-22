@@ -327,9 +327,15 @@ TRUSTED_HOSTS=localhost,127.0.0.1      # Comma-separated list
 
 # Telemetry Configuration
 TELEMETRY_ENABLED=true
-TELEMETRY_EXPORTER=console             # console | otlp
+TELEMETRY_EXPORTER=console             # console | otlp | none
 TELEMETRY_OTLP_ENDPOINT=               # e.g., http://localhost:4318
 TELEMETRY_SERVICE_NAME=rag-pipeline
+METRICS_ENABLED=true
+STRUCTURED_LOGS_ENABLED=true
+OTEL_METRIC_EXPORT_INTERVAL_MS=60000
+ENVIRONMENT=local
+SERVICE_VERSION=1.0.0
+LOG_LEVEL=INFO
 
 # Python Configuration
 PYTHONUNBUFFERED=1

@@ -421,19 +421,20 @@ Logs follow this format:
 
 ### OpenTelemetry Export
 
-Enable OTLP export for Jaeger/Datadog:
+Enable OTLP export for traces and metrics:
 
 ```bash
 export TELEMETRY_EXPORTER=otlp
 export TELEMETRY_OTLP_ENDPOINT=http://your-otel-collector:4318
+export METRICS_ENABLED=true
+export STRUCTURED_LOGS_ENABLED=true
 
-# Or with Jaeger locally
-docker run -d \
-  -p 16686:16686 \
-  -p 4317:4317 \
-  -p 4318:4318 \
-  jaegertracing/all-in-one:latest
+# Or run the local observability stack
+cd observability
+docker compose -f docker-compose.observability.yml up -d
 ```
+
+See [OBSERVABILITY.md](OBSERVABILITY.md) for Prometheus, Grafana, Jaeger, metrics, trace names, and production alerting guidance.
 
 ---
 

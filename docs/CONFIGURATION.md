@@ -8,6 +8,16 @@
 | `OPENAI_API_KEY` | Conditionally | `None` | API key consumed by `LLMConfig.api_key`. Required for hosted providers such as OpenAI or Groq. |
 | `LLM_BASE_URL` | Optional | `None` | Optional OpenAI-compatible base URL (`https://api.openai.com/v1`, Groq endpoint, or compatible proxy). |
 | `LLM_MODEL` | Optional | `gpt-4o-mini` | Default model used by guardrail/generator/evaluator and `LLMClient` unless overridden in code. |
+| `TELEMETRY_ENABLED` | Optional | `true` | Enables OpenTelemetry setup and structured logging. |
+| `TELEMETRY_EXPORTER` | Optional | `console` | Export mode: `console`, `otlp`, or `none`. |
+| `TELEMETRY_OTLP_ENDPOINT` | Optional | `None` | OTLP HTTP endpoint, usually `http://otel-collector:4318`. |
+| `TELEMETRY_SERVICE_NAME` | Optional | `rag-pipeline` | Service name attached to traces and metrics. |
+| `METRICS_ENABLED` | Optional | `true` | Enables OpenTelemetry metric instruments. |
+| `STRUCTURED_LOGS_ENABLED` | Optional | `true` | Emits JSON logs with correlation, trace, and span IDs. |
+| `OTEL_METRIC_EXPORT_INTERVAL_MS` | Optional | `60000` | Metric export interval in milliseconds. |
+| `ENVIRONMENT` | Optional | `local` | Deployment environment resource attribute. |
+| `SERVICE_VERSION` | Optional | `1.0.0` | Service version resource attribute. |
+| `LOG_LEVEL` | Optional | `INFO` | Root structured log level. |
 
 ## Config File Format
 
@@ -20,6 +30,7 @@ The project uses Python dataclasses in `config.py` as the primary configuration 
 - `LLMConfig`: provider endpoint and retry/timeouts.
 - `GuardrailConfig`, `GeneratorConfig`, `EvaluatorConfig`: stage-level model settings.
 - `RuntimeConfig`: stage toggles (`use_guardrail`) and evaluator execution mode.
+- `TelemetryConfig`: OpenTelemetry exporter, metrics, structured logs, service version, and environment.
 
 ## Required vs Optional Settings
 
