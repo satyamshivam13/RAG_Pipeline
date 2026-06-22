@@ -94,7 +94,9 @@ def mock_pipeline():
 @pytest.fixture
 def client(mock_pipeline):
     """Fixture to provide FastAPI test client with mocked pipeline."""
-    
+    previous_auth_disabled = os.environ.get("RAG_AUTH_DISABLED")
+    os.environ["RAG_AUTH_DISABLED"] = "true"
+
     def mock_get_pipeline():
         return mock_pipeline
     
@@ -104,6 +106,10 @@ def client(mock_pipeline):
         yield test_client
     
     app.dependency_overrides.clear()
+    if previous_auth_disabled is None:
+        os.environ.pop("RAG_AUTH_DISABLED", None)
+    else:
+        os.environ["RAG_AUTH_DISABLED"] = previous_auth_disabled
 
 
 class TestHealthEndpoint:

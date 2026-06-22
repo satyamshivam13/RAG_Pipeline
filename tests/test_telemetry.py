@@ -2,12 +2,16 @@ import pytest
 
 from config import TelemetryConfig
 from telemetry import (
+    add_counter,
     get_correlation_id,
     get_or_create_correlation_id,
+    observe_duration,
+    record_histogram,
     resolve_exporter_config,
     reset_correlation_id as clear_correlation_id,
     set_correlation_id,
 )
+import time
 from dataclasses import replace
 
 from config import PipelineConfig, RuntimeConfig
@@ -144,6 +148,24 @@ def test_exporter_defaults_to_console_and_accepts_otlp():
     otlp_selection = resolve_exporter_config(otlp_cfg)
     assert otlp_selection.exporter == "otlp"
     assert otlp_selection.endpoint == "http://collector:4318/v1/traces"
+
+    none_cfg = TelemetryConfig(
+        telemetry_enabled=True,
+        telemetry_service_name="rag",
+        telemetry_exporter="none",
+        telemetry_otlp_endpoint=None,
+    )
+    none_selection = resolve_exporter_config(none_cfg)
+    assert none_selection.exporter == "none"
+    assert none_selection.endpoint is None
+
+
+def test_metric_helpers_are_safe_without_explicit_provider():
+    record_histogram("test_latency_ms", 1.2, {"component": "test"})
+    add_counter("test_requests_total", attributes={"component": "test"})
+    elapsed = observe_duration("test_observe_duration_ms", time.perf_counter())
+
+    assert elapsed >= 0
 
 
 def test_sync_and_deferred_modes_keep_correlation_id(monkeypatch):
