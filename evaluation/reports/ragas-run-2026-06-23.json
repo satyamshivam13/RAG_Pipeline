@@ -1,0 +1,33 @@
+{
+  "evaluator": "ragas",
+  "run_at": "2026-06-23T01:19:00+00:00",
+  "status": "PARTIAL — RAGAS scoring blocked by provider daily token cap",
+  "judge_model": "llama-3.3-70b-versatile",
+  "judge_provider_base_url": "https://api.groq.com/openai/v1",
+  "embedding_model": "BAAI/bge-large-en-v1.5",
+  "dataset_size": 22,
+  "corpus_passages": 20,
+  "pipeline_stage": {
+    "status": "COMPLETE",
+    "note": "All 22 questions ran end-to-end through the real pipeline (retrieve -> guardrail-gate -> generate -> sync-evaluate) against Groq. Answers and contexts were produced for every sample.",
+    "latency_ms": {
+      "n": 22,
+      "mean": 9266.7,
+      "median": 9553.5,
+      "p95": 12495.0,
+      "min": 2583.0,
+      "max": 14191.0,
+      "samples": [5212, 2583, 9699, 9723, 13675, 8580, 12043, 9835, 10223, 12495, 7486, 9408, 14191, 6536, 8479, 10294, 9925, 8994, 7514, 7635, 10006, 9331]
+    },
+    "config": "evaluator_mode=sync (each query also makes a verification LLM call); latencies include Groq queueing as the daily budget depleted, so they are an upper bound for this config."
+  },
+  "ragas_metrics": {
+    "status": "NOT VERIFIED",
+    "reason": "Groq free-tier limit reached: tokens-per-day (TPD) 100000, used 99323. RAGAS completed 25 of 88 metric jobs (~28%) before every subsequent judge call returned HTTP 429. The remaining jobs cannot run until the daily quota resets.",
+    "faithfulness": null,
+    "answer_relevancy": null,
+    "context_precision": null,
+    "context_recall": null,
+    "how_to_complete": "Re-run `python -m evaluation.run_ragas` after the Groq daily quota resets, or with a higher-quota / paid key (any OpenAI-compatible endpoint via LLM_BASE_URL). The runner and notebook are unchanged and ready."
+  }
+}
