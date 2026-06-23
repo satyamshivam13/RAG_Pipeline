@@ -52,12 +52,14 @@ def _build_judge():
     from langchain_huggingface import HuggingFaceEmbeddings
     from ragas.llms import LangchainLLMWrapper
     from ragas.embeddings import LangchainEmbeddingsWrapper
+    from pydantic import SecretStr
 
+    openai_api_key = os.getenv("OPENAI_API_KEY")
     judge_llm = LangchainLLMWrapper(
         ChatOpenAI(
             model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
             base_url=os.getenv("LLM_BASE_URL") or None,
-            api_key=os.getenv("OPENAI_API_KEY"),
+            api_key=SecretStr(openai_api_key) if openai_api_key else None,
             temperature=0.0,
             timeout=120,
             max_retries=2,

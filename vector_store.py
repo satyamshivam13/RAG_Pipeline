@@ -41,6 +41,7 @@ class VectorStore:
 
     def _build_index(self) -> faiss.Index:
         d = self._dimension
+        index: faiss.Index
         if self._config.index_type == "flat":
             index = faiss.IndexFlatIP(d)
         elif self._config.index_type == "ivf":

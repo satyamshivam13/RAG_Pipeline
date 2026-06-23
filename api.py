@@ -76,7 +76,7 @@ logger = logging.getLogger(__name__)
 class IngestRequest(BaseModel):
     """Ingest documents into the RAG pipeline."""
 
-    texts: list[str] = Field(..., min_items=1, max_items=1000, description="List of document texts to ingest")
+    texts: list[str] = Field(..., min_length=1, max_length=1000, description="List of document texts to ingest")
     source: str = Field(default="api", description="Source identifier for these documents")
     metadata: Optional[dict] = Field(default=None, description="Optional metadata attached to all documents")
 
@@ -776,7 +776,7 @@ def custom_openapi():
     return app.openapi_schema
 
 
-app.openapi = custom_openapi
+app.openapi = custom_openapi  # type: ignore[method-assign]
 
 
 if __name__ == "__main__":
