@@ -59,7 +59,9 @@ class RAGPipeline:
         self._evaluator = EvaluatorAgent(self._config.evaluator, self._llm)
         configure_observability(self._config.telemetry)
 
-        self._evaluator_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rag-evaluator")
+        self._evaluator_executor: Optional[ThreadPoolExecutor] = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="rag-evaluator"
+        )
 
         logger.info("RAG Pipeline initialized")
 

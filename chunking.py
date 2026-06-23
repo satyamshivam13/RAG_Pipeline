@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-from typing import Protocol
+from typing import Any, Protocol
 
 import tiktoken
 
@@ -17,7 +17,7 @@ from config import ChunkingConfig
 
 _SENTENCE_ENDINGS = ".!?\u3002\uff01\uff1f\u0964\u061f"
 _SENTENCE_RE = re.compile(rf".+?(?:[{re.escape(_SENTENCE_ENDINGS)}]+(?=\s|$)|$)", re.DOTALL)
-_TOKENIZER_CACHE: dict[tuple[str, str], object] = {}
+_TOKENIZER_CACHE: dict[tuple[str, str], Any] = {}
 _TOKENIZER_FALLBACKS: set[tuple[str, str]] = set()
 
 
@@ -35,6 +35,8 @@ class TiktokenTokenizer:
     def __init__(self, model: str = "gpt-4o-mini", encoding_name: str = "cl100k_base"):
         key = (model, encoding_name)
         self._fallback: RegexTokenizer | None = None
+        # Holds a tiktoken Encoding (untyped third-party) or None when a fallback is used.
+        self._encoding: Any = None
         if encoding_name == "regex":
             self._encoding = None
             self._fallback = RegexTokenizer()

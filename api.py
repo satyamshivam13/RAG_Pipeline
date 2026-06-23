@@ -566,8 +566,8 @@ async def ingest(
 async def query_stream_generator(
     query: str,
     pipeline: RAGPipeline,
-    enable_guardrail: bool,
-    sync_evaluation: bool,
+    enable_guardrail: Optional[bool],
+    sync_evaluation: Optional[bool],
     top_k: int,
 ) -> AsyncGenerator[str, None]:
     """
