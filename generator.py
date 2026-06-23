@@ -127,7 +127,7 @@ class Generator:
             try:
                 return int(self._llm.count_tokens(text))
             except Exception:
-                pass
+                logger.debug("count_tokens failed; using heuristic estimate", exc_info=True)
         # Deterministic fallback heuristic.
         return max(1, len(text) // 4)
 

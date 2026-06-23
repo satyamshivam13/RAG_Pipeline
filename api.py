@@ -782,9 +782,15 @@ app.openapi = custom_openapi
 if __name__ == "__main__":
     import uvicorn
 
+    # Default to all interfaces because the service is intended to run inside a
+    # container where the published port is controlled by the orchestrator.
+    # Override with API_HOST for local/bare-metal runs.
+    host = os.getenv("API_HOST", "0.0.0.0")  # nosec B104 - intentional container bind
+    port = int(os.getenv("API_PORT", "8000"))
+
     uvicorn.run(
         app,
-        host="0.0.0.0",
-        port=8000,
+        host=host,
+        port=port,
         log_level="info",
     )
