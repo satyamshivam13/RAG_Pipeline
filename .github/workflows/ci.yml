@@ -69,7 +69,6 @@ jobs:
         mkdir -p reports/security &&
         safety check
         --file requirements.txt
-        --full-report
         --output json
         > reports/security/safety.json
       artifact_path: reports/security/safety.json
