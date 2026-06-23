@@ -8,7 +8,7 @@ These tests require OPENAI_API_KEY to be set for the app lifespan initialization
 import pytest
 import os
 from fastapi.testclient import TestClient
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock
 import json
 
 from api import app, get_pipeline, limiter

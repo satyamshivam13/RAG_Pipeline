@@ -11,7 +11,6 @@ to minimize latency while keeping per-chunk granularity.
 """
 
 from __future__ import annotations
-import json
 import logging
 import time
 

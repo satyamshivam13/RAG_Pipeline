@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 from config import GuardrailConfig
 from guardrail_agent import GuardrailAgent
-from models import RetrievedChunk, Chunk, RelevanceVerdict
+from models import RetrievedChunk, Chunk
 
 
 @pytest.fixture

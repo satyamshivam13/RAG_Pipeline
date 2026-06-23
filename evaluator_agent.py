@@ -117,7 +117,8 @@ class EvaluatorAgent:
         is_reliable = score >= self._config.consistency_threshold
 
         logger.info(
-            "evaluator.complete event=evaluate_done correlation_id=%s component=evaluator operation=evaluate stage=evaluate duration_ms=%.2f claims=%s score=%.2f reliable=%s",
+            "evaluator.complete event=evaluate_done correlation_id=%s component=evaluator "
+            "operation=evaluate stage=evaluate duration_ms=%.2f claims=%s score=%.2f reliable=%s",
             get_or_create_correlation_id(),
             elapsed,
             len(claims),

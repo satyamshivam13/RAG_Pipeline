@@ -47,7 +47,6 @@ from slowapi.errors import RateLimitExceeded
 
 from config import PipelineConfig
 from main import RAGPipeline
-from models import RetrievedChunk
 from telemetry import (
     add_counter,
     configure_observability,
