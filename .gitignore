@@ -89,6 +89,9 @@ Thumbs.db
 *graphify-python-*.log
 evaluation/reports/
 
+# Tooling
+.jetro/
+
 # Additional common ignores
 .mypy_cache/
 .pytype/
