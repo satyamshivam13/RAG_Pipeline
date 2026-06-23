@@ -136,7 +136,6 @@ class Generator:
         parts = []
         for i, c in enumerate(chunks, 1):
             parts.append(
-                f"[{i}] (source: {c.chunk.source}, relevance: {c.similarity_score:.2f})\n"
-                f"{c.chunk.content}"
+                f"[{i}] (source: {c.chunk.source}, relevance: {c.similarity_score:.2f})\n" f"{c.chunk.content}"
             )
         return "\n\n".join(parts)

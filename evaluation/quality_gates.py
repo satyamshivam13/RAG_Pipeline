@@ -26,7 +26,9 @@ def _get_metrics(report: dict) -> dict:
 
 def evaluate_quality_gates(report: dict) -> tuple[bool, list[str]]:
     metrics = _get_metrics(report)
-    missing = [key for key in ("faithfulness", "answer_relevancy", "context_precision", "context_recall") if key not in metrics]
+    missing = [
+        key for key in ("faithfulness", "answer_relevancy", "context_precision", "context_recall") if key not in metrics
+    ]
     if missing:
         raise ValueError(f"Invalid report: missing metric keys: {', '.join(missing)}")
 
@@ -40,23 +42,15 @@ def evaluate_quality_gates(report: dict) -> tuple[bool, list[str]]:
 
     if faithfulness < FAITHFULNESS_MIN:
         passed = False
-        messages.append(
-            f"FAIL faithfulness={faithfulness:.4f} < {FAITHFULNESS_MIN:.2f}"
-        )
+        messages.append(f"FAIL faithfulness={faithfulness:.4f} < {FAITHFULNESS_MIN:.2f}")
     else:
-        messages.append(
-            f"PASS faithfulness={faithfulness:.4f} >= {FAITHFULNESS_MIN:.2f}"
-        )
+        messages.append(f"PASS faithfulness={faithfulness:.4f} >= {FAITHFULNESS_MIN:.2f}")
 
     if answer_relevancy < ANSWER_RELEVANCY_MIN:
         passed = False
-        messages.append(
-            f"FAIL answer_relevancy={answer_relevancy:.4f} < {ANSWER_RELEVANCY_MIN:.2f}"
-        )
+        messages.append(f"FAIL answer_relevancy={answer_relevancy:.4f} < {ANSWER_RELEVANCY_MIN:.2f}")
     else:
-        messages.append(
-            f"PASS answer_relevancy={answer_relevancy:.4f} >= {ANSWER_RELEVANCY_MIN:.2f}"
-        )
+        messages.append(f"PASS answer_relevancy={answer_relevancy:.4f} >= {ANSWER_RELEVANCY_MIN:.2f}")
 
     messages.append(f"INFO context_precision={context_precision:.4f} (non-blocking)")
     messages.append(f"INFO context_recall={context_recall:.4f} (non-blocking)")

@@ -24,11 +24,14 @@ def sample_chunks():
 
 @pytest.fixture
 def deterministic_embeddings():
-    embs = np.array([
-        [1.0, 0.5, 0.3, 0.1] + [0.0] * 1020,
-        [0.9, 0.6, 0.2, 0.2] + [0.0] * 1020,
-        [0.3, 0.1, 0.9, 0.5] + [0.0] * 1020,
-    ], dtype=np.float32)
+    embs = np.array(
+        [
+            [1.0, 0.5, 0.3, 0.1] + [0.0] * 1020,
+            [0.9, 0.6, 0.2, 0.2] + [0.0] * 1020,
+            [0.3, 0.1, 0.9, 0.5] + [0.0] * 1020,
+        ],
+        dtype=np.float32,
+    )
     norms = np.linalg.norm(embs, axis=1, keepdims=True)
     return embs / norms
 
@@ -98,11 +101,14 @@ def test_mmr_promotes_diversity(store):
         Chunk(document_id="d2", content="Quantum physics is fascinating", chunk_index=0),
     ]
 
-    embs = np.array([
-        [0.9, 0.1, 0.0, 0.0] + [0.0] * 1020,
-        [0.88, 0.12, 0.0, 0.0] + [0.0] * 1020,
-        [0.5, 0.0, 0.5, 0.0] + [0.0] * 1020,
-    ], dtype=np.float32)
+    embs = np.array(
+        [
+            [0.9, 0.1, 0.0, 0.0] + [0.0] * 1020,
+            [0.88, 0.12, 0.0, 0.0] + [0.0] * 1020,
+            [0.5, 0.0, 0.5, 0.0] + [0.0] * 1020,
+        ],
+        dtype=np.float32,
+    )
     embs /= np.linalg.norm(embs, axis=1, keepdims=True)
 
     store.add(near_dup_chunks, embs)
@@ -131,9 +137,12 @@ def test_add_rejects_wrong_embedding_width(store, sample_chunks):
 def test_load_rejects_incompatible_dimension(tmp_path):
     config = VectorStoreConfig(persist_dir=str(tmp_path))
     store = VectorStore(config, dimension=1024)
-    store.add([
-        Chunk(document_id="d1", content="Hello world", chunk_index=0),
-    ], np.ones((1, 1024), dtype=np.float32))
+    store.add(
+        [
+            Chunk(document_id="d1", content="Hello world", chunk_index=0),
+        ],
+        np.ones((1, 1024), dtype=np.float32),
+    )
     store.save("persisted")
 
     incompatible = VectorStore(config, dimension=384)

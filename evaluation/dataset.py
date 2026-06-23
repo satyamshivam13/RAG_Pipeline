@@ -32,9 +32,7 @@ def _validate_required_keys(row: dict[str, Any], line_number: int) -> None:
     missing = sorted(required_keys - set(row.keys()))
     if missing:
         missing_txt = ", ".join(missing)
-        raise ValueError(
-            f"Invalid evaluation row at line {line_number}: missing required keys: {missing_txt}"
-        )
+        raise ValueError(f"Invalid evaluation row at line {line_number}: missing required keys: {missing_txt}")
 
 
 def load_evaluation_dataset(path: str | Path) -> list[EvaluationSample]:
@@ -52,9 +50,7 @@ def load_evaluation_dataset(path: str | Path) -> list[EvaluationSample]:
             try:
                 row = json.loads(line)
             except json.JSONDecodeError as exc:
-                raise ValueError(
-                    f"Invalid JSON at line {idx}: {exc.msg}"
-                ) from exc
+                raise ValueError(f"Invalid JSON at line {idx}: {exc.msg}") from exc
 
             if not isinstance(row, dict):
                 raise ValueError(f"Invalid evaluation row at line {idx}: expected JSON object")

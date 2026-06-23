@@ -51,6 +51,7 @@ def test_embedding_model_dimension_mismatch_fails_fast(monkeypatch):
     assert "outputs 384" in message
     assert "dimension is 1024" in message
 
+
 from config import EmbeddingConfig, VectorStoreConfig
 from vector_store import VectorStore
 

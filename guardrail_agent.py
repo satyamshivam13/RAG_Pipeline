@@ -61,9 +61,7 @@ class GuardrailAgent:
         self._config = config
         self._llm = llm
 
-    def evaluate(
-        self, query: str, chunks: list[RetrievedChunk]
-    ) -> GuardrailOutput:
+    def evaluate(self, query: str, chunks: list[RetrievedChunk]) -> GuardrailOutput:
         """Run the guardrail over retrieved chunks."""
         t0 = time.perf_counter()
 
@@ -79,10 +77,7 @@ class GuardrailAgent:
 
         # ── Build the user prompt ───────────────────────────────────
         chunks_text = self._format_chunks(chunks)
-        user_prompt = (
-            f"QUERY:\n{query}\n\n"
-            f"CHUNKS:\n{chunks_text}"
-        )
+        user_prompt = f"QUERY:\n{query}\n\n" f"CHUNKS:\n{chunks_text}"
 
         # ── Call the LLM ────────────────────────────────────────────
         messages = [
@@ -115,12 +110,14 @@ class GuardrailAgent:
                 # LLM didn't return an eval for this chunk — keep it to be safe
                 logger.warning(f"Guardrail: no evaluation for chunk {cid}, keeping it")
                 filtered_chunks.append(chunk_result)
-                accepted.append(ChunkRelevanceResult(
-                    chunk_id=cid,
-                    verdict=RelevanceVerdict.RELEVANT,
-                    relevance_score=0.5,
-                    reasoning="No evaluation returned by guardrail; kept by default.",
-                ))
+                accepted.append(
+                    ChunkRelevanceResult(
+                        chunk_id=cid,
+                        verdict=RelevanceVerdict.RELEVANT,
+                        relevance_score=0.5,
+                        reasoning="No evaluation returned by guardrail; kept by default.",
+                    )
+                )
                 continue
 
             if ev.relevance_score >= self._config.relevance_threshold:
@@ -166,12 +163,14 @@ class GuardrailAgent:
         results = []
         for item in data.get("evaluations", []):
             try:
-                results.append(ChunkRelevanceResult(
-                    chunk_id=item["chunk_id"],
-                    verdict=RelevanceVerdict(item.get("verdict", "relevant")),
-                    relevance_score=float(item.get("relevance_score", 0.5)),
-                    reasoning=item.get("reasoning", ""),
-                ))
+                results.append(
+                    ChunkRelevanceResult(
+                        chunk_id=item["chunk_id"],
+                        verdict=RelevanceVerdict(item.get("verdict", "relevant")),
+                        relevance_score=float(item.get("relevance_score", 0.5)),
+                        reasoning=item.get("reasoning", ""),
+                    )
+                )
             except (KeyError, ValueError) as e:
                 logger.warning(f"Skipping malformed evaluation: {e}")
         return results

@@ -77,15 +77,9 @@ logger = logging.getLogger(__name__)
 class IngestRequest(BaseModel):
     """Ingest documents into the RAG pipeline."""
 
-    texts: list[str] = Field(
-        ..., min_items=1, max_items=1000, description="List of document texts to ingest"
-    )
-    source: str = Field(
-        default="api", description="Source identifier for these documents"
-    )
-    metadata: Optional[dict] = Field(
-        default=None, description="Optional metadata attached to all documents"
-    )
+    texts: list[str] = Field(..., min_items=1, max_items=1000, description="List of document texts to ingest")
+    source: str = Field(default="api", description="Source identifier for these documents")
+    metadata: Optional[dict] = Field(default=None, description="Optional metadata attached to all documents")
 
     @validator("texts")
     def texts_not_empty(cls, v):
@@ -117,18 +111,12 @@ class QueryRequest(BaseModel):
     """Query the RAG pipeline."""
 
     query: str = Field(..., min_length=1, max_length=2000, description="Question to answer")
-    top_k: Optional[int] = Field(
-        default=10, ge=1, le=100, description="Number of chunks to retrieve"
-    )
-    enable_guardrail: Optional[bool] = Field(
-        default=False, description="Enable guardrail checks"
-    )
+    top_k: Optional[int] = Field(default=10, ge=1, le=100, description="Number of chunks to retrieve")
+    enable_guardrail: Optional[bool] = Field(default=False, description="Enable guardrail checks")
     sync_evaluation: Optional[bool] = Field(
         default=False, description="Wait for evaluation before returning (vs async)"
     )
-    stream: Optional[bool] = Field(
-        default=False, description="Stream response (newline-delimited JSON)"
-    )
+    stream: Optional[bool] = Field(default=False, description="Stream response (newline-delimited JSON)")
 
 
 class QueryResponse(BaseModel):
@@ -281,6 +269,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     Structured logging middleware for all requests.
     Logs request method, path, status, and latency.
     """
+
     async def dispatch(self, request: Request, call_next) -> Response:
         start_time = time.perf_counter()
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())

@@ -90,10 +90,7 @@ class EvaluatorAgent:
 
         # ── Build prompt ────────────────────────────────────────────
         context_text = self._format_context(context_chunks)
-        user_prompt = (
-            f"ANSWER:\n{answer}\n\n"
-            f"SOURCE CONTEXT:\n{context_text}"
-        )
+        user_prompt = f"ANSWER:\n{answer}\n\n" f"SOURCE CONTEXT:\n{context_text}"
         if query:
             user_prompt = f"ORIGINAL QUESTION:\n{query}\n\n" + user_prompt
 
@@ -150,12 +147,14 @@ class EvaluatorAgent:
         results = []
         for item in data.get("claims", []):
             try:
-                results.append(ClaimEvaluation(
-                    claim=item["claim"],
-                    verdict=ClaimVerdict(item.get("verdict", "not_supported")),
-                    supporting_evidence=item.get("supporting_evidence", ""),
-                    reasoning=item.get("reasoning", ""),
-                ))
+                results.append(
+                    ClaimEvaluation(
+                        claim=item["claim"],
+                        verdict=ClaimVerdict(item.get("verdict", "not_supported")),
+                        supporting_evidence=item.get("supporting_evidence", ""),
+                        reasoning=item.get("reasoning", ""),
+                    )
+                )
             except (KeyError, ValueError) as e:
                 logger.warning(f"Skipping malformed claim: {e}")
         return results
