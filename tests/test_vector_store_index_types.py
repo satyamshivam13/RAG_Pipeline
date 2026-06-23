@@ -48,7 +48,7 @@ def test_mmr_benchmark_small(tmp_path):
 
     # baseline search
     t0 = time.time()
-    sres = store.search(q, top_k=5)
+    store.search(q, top_k=5)
     t_search = time.time() - t0
 
     t0 = time.time()

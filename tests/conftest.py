@@ -1,4 +1,5 @@
 """Pytest configuration for tests directory."""
+
 import os
 import sys
 from pathlib import Path

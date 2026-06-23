@@ -41,13 +41,12 @@ class VectorStore:
 
     def _build_index(self) -> faiss.Index:
         d = self._dimension
+        index: faiss.Index
         if self._config.index_type == "flat":
             index = faiss.IndexFlatIP(d)
         elif self._config.index_type == "ivf":
             quantizer = faiss.IndexFlatIP(d)
-            index = faiss.IndexIVFFlat(
-                quantizer, d, self._config.n_lists, faiss.METRIC_INNER_PRODUCT
-            )
+            index = faiss.IndexIVFFlat(quantizer, d, self._config.n_lists, faiss.METRIC_INNER_PRODUCT)
             index.nprobe = self._config.n_probe
         elif self._config.index_type == "hnsw":
             index = faiss.IndexHNSWFlat(d, 32, faiss.METRIC_INNER_PRODUCT)
@@ -106,8 +105,7 @@ class VectorStore:
         query_embedding = query_embedding.reshape(1, -1).astype(np.float32)
         if query_embedding.shape[1] != self._dimension:
             raise ValueError(
-                "Query dimension mismatch: "
-                f"got {query_embedding.shape[1]}, expected {self._dimension}."
+                "Query dimension mismatch: " f"got {query_embedding.shape[1]}, expected {self._dimension}."
             )
 
         with span_context_or_null(
@@ -151,8 +149,7 @@ class VectorStore:
         query_embedding = query_embedding.reshape(1, -1).astype(np.float32)
         if query_embedding.shape[1] != self._dimension:
             raise ValueError(
-                "Query dimension mismatch: "
-                f"got {query_embedding.shape[1]}, expected {self._dimension}."
+                "Query dimension mismatch: " f"got {query_embedding.shape[1]}, expected {self._dimension}."
             )
 
         with span_context_or_null(
@@ -167,11 +164,13 @@ class VectorStore:
             for score, idx in zip(scores[0], indices[0]):
                 if idx < 0:
                     continue
-                candidates.append(_Candidate(
-                    chunk=self._chunks[idx],
-                    raw_score=float(score),
-                    faiss_index=int(idx),
-                ))
+                candidates.append(
+                    _Candidate(
+                        chunk=self._chunks[idx],
+                        raw_score=float(score),
+                        faiss_index=int(idx),
+                    )
+                )
 
             if not candidates:
                 observe_duration(
@@ -306,8 +305,7 @@ class VectorStore:
             persisted_dim = payload.get("dimension") if isinstance(payload, dict) else self._dimension
             if persisted_dim != self._dimension:
                 raise ValueError(
-                    "Persisted chunk metadata dimension mismatch: "
-                    f"got {persisted_dim}, expected {self._dimension}."
+                    "Persisted chunk metadata dimension mismatch: " f"got {persisted_dim}, expected {self._dimension}."
                 )
             self._chunks = [Chunk(**c) for c in chunks]
         # Try to load stored embeddings.npy

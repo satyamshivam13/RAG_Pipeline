@@ -1,10 +1,11 @@
 """Tests for the Guardrail Agent (uses mocked LLM)."""
+
 import pytest
 from unittest.mock import MagicMock
 
 from config import GuardrailConfig
 from guardrail_agent import GuardrailAgent
-from models import RetrievedChunk, Chunk, RelevanceVerdict
+from models import RetrievedChunk, Chunk
 
 
 @pytest.fixture
@@ -31,10 +32,8 @@ def test_guardrail_filters_irrelevant(agent, mock_llm, sample_chunks):
     """Chunks below the relevance threshold should be removed."""
     mock_llm.chat_json.return_value = {
         "evaluations": [
-            {"chunk_id": "c1", "relevance_score": 0.9, "verdict": "relevant",
-             "reasoning": "Directly about AI"},
-            {"chunk_id": "c2", "relevance_score": 0.2, "verdict": "irrelevant",
-             "reasoning": "About cooking, not AI"},
+            {"chunk_id": "c1", "relevance_score": 0.9, "verdict": "relevant", "reasoning": "Directly about AI"},
+            {"chunk_id": "c2", "relevance_score": 0.2, "verdict": "irrelevant", "reasoning": "About cooking, not AI"},
         ],
         "safety_flags": [],
     }
@@ -55,10 +54,8 @@ def test_guardrail_empty_input(agent):
 def test_guardrail_safety_flags(agent, mock_llm, sample_chunks):
     mock_llm.chat_json.return_value = {
         "evaluations": [
-            {"chunk_id": "c1", "relevance_score": 0.9, "verdict": "relevant",
-             "reasoning": "Relevant"},
-            {"chunk_id": "c2", "relevance_score": 0.8, "verdict": "relevant",
-             "reasoning": "Relevant"},
+            {"chunk_id": "c1", "relevance_score": 0.9, "verdict": "relevant", "reasoning": "Relevant"},
+            {"chunk_id": "c2", "relevance_score": 0.8, "verdict": "relevant", "reasoning": "Relevant"},
         ],
         "safety_flags": ["Contains email address (PII)"],
     }

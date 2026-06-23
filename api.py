@@ -47,7 +47,6 @@ from slowapi.errors import RateLimitExceeded
 
 from config import PipelineConfig
 from main import RAGPipeline
-from models import RetrievedChunk
 from telemetry import (
     add_counter,
     configure_observability,
@@ -77,15 +76,9 @@ logger = logging.getLogger(__name__)
 class IngestRequest(BaseModel):
     """Ingest documents into the RAG pipeline."""
 
-    texts: list[str] = Field(
-        ..., min_items=1, max_items=1000, description="List of document texts to ingest"
-    )
-    source: str = Field(
-        default="api", description="Source identifier for these documents"
-    )
-    metadata: Optional[dict] = Field(
-        default=None, description="Optional metadata attached to all documents"
-    )
+    texts: list[str] = Field(..., min_length=1, max_length=1000, description="List of document texts to ingest")
+    source: str = Field(default="api", description="Source identifier for these documents")
+    metadata: Optional[dict] = Field(default=None, description="Optional metadata attached to all documents")
 
     @validator("texts")
     def texts_not_empty(cls, v):
@@ -117,18 +110,12 @@ class QueryRequest(BaseModel):
     """Query the RAG pipeline."""
 
     query: str = Field(..., min_length=1, max_length=2000, description="Question to answer")
-    top_k: Optional[int] = Field(
-        default=10, ge=1, le=100, description="Number of chunks to retrieve"
-    )
-    enable_guardrail: Optional[bool] = Field(
-        default=False, description="Enable guardrail checks"
-    )
+    top_k: Optional[int] = Field(default=10, ge=1, le=100, description="Number of chunks to retrieve")
+    enable_guardrail: Optional[bool] = Field(default=False, description="Enable guardrail checks")
     sync_evaluation: Optional[bool] = Field(
         default=False, description="Wait for evaluation before returning (vs async)"
     )
-    stream: Optional[bool] = Field(
-        default=False, description="Stream response (newline-delimited JSON)"
-    )
+    stream: Optional[bool] = Field(default=False, description="Stream response (newline-delimited JSON)")
 
 
 class QueryResponse(BaseModel):
@@ -281,6 +268,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     Structured logging middleware for all requests.
     Logs request method, path, status, and latency.
     """
+
     async def dispatch(self, request: Request, call_next) -> Response:
         start_time = time.perf_counter()
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
@@ -578,8 +566,8 @@ async def ingest(
 async def query_stream_generator(
     query: str,
     pipeline: RAGPipeline,
-    enable_guardrail: bool,
-    sync_evaluation: bool,
+    enable_guardrail: Optional[bool],
+    sync_evaluation: Optional[bool],
     top_k: int,
 ) -> AsyncGenerator[str, None]:
     """
@@ -788,15 +776,21 @@ def custom_openapi():
     return app.openapi_schema
 
 
-app.openapi = custom_openapi
+app.openapi = custom_openapi  # type: ignore[method-assign]
 
 
 if __name__ == "__main__":
     import uvicorn
 
+    # Default to all interfaces because the service is intended to run inside a
+    # container where the published port is controlled by the orchestrator.
+    # Override with API_HOST for local/bare-metal runs.
+    host = os.getenv("API_HOST", "0.0.0.0")  # nosec B104 - intentional container bind
+    port = int(os.getenv("API_PORT", "8000"))
+
     uvicorn.run(
         app,
-        host="0.0.0.0",
-        port=8000,
+        host=host,
+        port=port,
         log_level="info",
     )

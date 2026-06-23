@@ -25,17 +25,17 @@ try:
 
     OTEL_AVAILABLE = True
 except Exception:  # pragma: no cover - optional dependency path
-    metrics = None
-    trace = None
-    Resource = None
-    TracerProvider = None
-    BatchSpanProcessor = None
-    ConsoleSpanExporter = None
-    OTLPSpanExporter = None
-    MeterProvider = None
-    ConsoleMetricExporter = None
-    PeriodicExportingMetricReader = None
-    OTLPMetricExporter = None
+    metrics = None  # type: ignore[assignment]
+    trace = None  # type: ignore[assignment]
+    Resource = None  # type: ignore[assignment,misc]
+    TracerProvider = None  # type: ignore[assignment,misc]
+    BatchSpanProcessor = None  # type: ignore[assignment,misc]
+    ConsoleSpanExporter = None  # type: ignore[assignment,misc]
+    OTLPSpanExporter = None  # type: ignore[assignment,misc]
+    MeterProvider = None  # type: ignore[assignment,misc]
+    ConsoleMetricExporter = None  # type: ignore[assignment,misc]
+    PeriodicExportingMetricReader = None  # type: ignore[assignment,misc]
+    OTLPMetricExporter = None  # type: ignore[assignment,misc]
     OTEL_AVAILABLE = False
 
 

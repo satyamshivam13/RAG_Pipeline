@@ -52,16 +52,16 @@ class RAGPipeline:
             dimension=self._embeddings.dimension,
         )
         self._loader = DocumentLoader(self._config.chunking)
-        self._retriever = Retriever(
-            self._config.retriever, self._embeddings, self._vector_store
-        )
+        self._retriever = Retriever(self._config.retriever, self._embeddings, self._vector_store)
 
         self._guardrail = GuardrailAgent(self._config.guardrail, self._llm)
         self._generator = Generator(self._config.generator, self._llm)
         self._evaluator = EvaluatorAgent(self._config.evaluator, self._llm)
         configure_observability(self._config.telemetry)
 
-        self._evaluator_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rag-evaluator")
+        self._evaluator_executor: Optional[ThreadPoolExecutor] = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="rag-evaluator"
+        )
 
         logger.info("RAG Pipeline initialized")
 
@@ -84,10 +84,7 @@ class RAGPipeline:
         source: str = "manual",
         metadata: Optional[dict] = None,
     ) -> int:
-        docs = [
-            Document(content=t, source=f"{source}_{i}", metadata=metadata or {})
-            for i, t in enumerate(texts)
-        ]
+        docs = [Document(content=t, source=f"{source}_{i}", metadata=metadata or {}) for i, t in enumerate(texts)]
         return self.ingest_documents(docs)
 
     def ingest_documents(self, documents: list[Document]) -> int:
@@ -128,14 +125,8 @@ class RAGPipeline:
         t0 = time.perf_counter()
         correlation_id = get_or_create_correlation_id()
 
-        use_guardrail = (
-            self._config.runtime.use_guardrail if enable_guardrail is None else enable_guardrail
-        )
-        run_sync_eval = (
-            (self._config.runtime.evaluator_mode == "sync")
-            if sync_evaluation is None
-            else sync_evaluation
-        )
+        use_guardrail = self._config.runtime.use_guardrail if enable_guardrail is None else enable_guardrail
+        run_sync_eval = (self._config.runtime.evaluator_mode == "sync") if sync_evaluation is None else sync_evaluation
 
         with span_context_or_null("rag.query", {"query.length": len(question)}, "rag.main") as query_span:
             if query_span:
@@ -152,10 +143,7 @@ class RAGPipeline:
                 set_span_attributes(retrieve_span, {"retrieved.count": len(retrieved)})
             logger.info("  Step 1 (Retrieve): %s chunks", len(retrieved))
 
-            filtered = [
-                r for r in retrieved
-                if r.similarity_score >= self._config.retriever.similarity_threshold
-            ]
+            filtered = [r for r in retrieved if r.similarity_score >= self._config.retriever.similarity_threshold]
 
             guardrail_output = None
 

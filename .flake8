@@ -4,5 +4,6 @@ extend-ignore = E203,W503
 exclude =
     .git,
     .venv,
+    .venv311,
     __pycache__,
     vector_store_data

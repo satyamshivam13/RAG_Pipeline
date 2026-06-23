@@ -38,7 +38,6 @@ KNOWLEDGE_BASE = [
     Quantum error correction remains one of the biggest challenges, as qubits are
     extremely sensitive to environmental noise.
     """,
-
     """
     Machine Learning Model Training:
     Training large language models requires massive computational resources.
@@ -52,7 +51,6 @@ KNOWLEDGE_BASE = [
     costs. Techniques like LoRA (Low-Rank Adaptation) have since reduced
     fine-tuning costs by orders of magnitude.
     """,
-
     """
     Renewable Energy Technologies:
     Solar photovoltaic (PV) technology has seen dramatic cost reductions, with
@@ -66,7 +64,6 @@ KNOWLEDGE_BASE = [
     technologies include perovskite solar cells, solid-state batteries, and green
     hydrogen production through electrolysis powered by renewable sources.
     """,
-
     """
     CRISPR Gene Editing:
     CRISPR-Cas9, discovered by Jennifer Doudna and Emmanuelle Charpentier (who
@@ -80,7 +77,6 @@ KNOWLEDGE_BASE = [
     germline editing (heritable changes) and off-target effects where unintended
     parts of the genome are modified.
     """,
-
     """
     Climate Change and Ocean Acidification:
     The world's oceans have absorbed approximately 30% of anthropogenic CO2
@@ -119,12 +115,14 @@ def display_result(result, console: Console) -> None:
     reliability_color = "green" if result.is_reliable else "red"
     reliability_icon = "✅" if result.is_reliable else "⚠️"
 
-    console.print(Panel(
-        Markdown(result.answer),
-        title=f"{reliability_icon} Answer (consistency: {result.consistency_score:.0%})",
-        border_style=reliability_color,
-        padding=(1, 2),
-    ))
+    console.print(
+        Panel(
+            Markdown(result.answer),
+            title=f"{reliability_icon} Answer (consistency: {result.consistency_score:.0%})",
+            border_style=reliability_color,
+            padding=(1, 2),
+        )
+    )
 
     # ── Retrieval Summary ───────────────────────────────────────
     table = Table(
@@ -138,10 +136,7 @@ def display_result(result, console: Console) -> None:
     table.add_row("Chunks Retrieved", str(len(result.retrieval)))
     table.add_row("Chunks After Guardrail", str(len(result.guardrail.filtered_chunks)))
     table.add_row("Chunks Removed", str(len(result.guardrail.removed_chunks)))
-    table.add_row(
-        "Safety Flags",
-        ", ".join(result.guardrail.safety_flags) if result.guardrail.safety_flags else "None"
-    )
+    table.add_row("Safety Flags", ", ".join(result.guardrail.safety_flags) if result.guardrail.safety_flags else "None")
     table.add_row("Guardrail Time", f"{result.guardrail.processing_time_ms:.0f}ms")
     table.add_row("Generation Time", f"{result.generation.processing_time_ms:.0f}ms")
     table.add_row("Evaluation Time", f"{result.evaluation.processing_time_ms:.0f}ms")
@@ -181,11 +176,13 @@ def display_result(result, console: Console) -> None:
 
     # ── Evaluator Summary ───────────────────────────────────────
     if result.evaluation.summary:
-        console.print(Panel(
-            result.evaluation.summary,
-            title="📋 Evaluator Summary",
-            border_style="blue",
-        ))
+        console.print(
+            Panel(
+                result.evaluation.summary,
+                title="📋 Evaluator Summary",
+                border_style="blue",
+            )
+        )
 
     # ── Guardrail Removed Chunks ────────────────────────────────
     if result.guardrail.removed_chunks:
@@ -208,17 +205,19 @@ def display_result(result, console: Console) -> None:
 
 
 def main():
-    console.print(Panel(
-        "[bold]Multi-Agent RAG Pipeline Demo[/bold]\n\n"
-        "Components:\n"
-        "  1. 📦 Retriever  — FAISS vector search with MMR\n"
-        "  2. 🛡️  Guardrail  — LLM-based relevance & safety filter\n"
-        "  3. 🤖 Generator  — Grounded answer generation\n"
-        "  4. ✅ Evaluator  — Factual consistency scoring",
-        title="🚀 RAG Pipeline",
-        border_style="bright_blue",
-        padding=(1, 2),
-    ))
+    console.print(
+        Panel(
+            "[bold]Multi-Agent RAG Pipeline Demo[/bold]\n\n"
+            "Components:\n"
+            "  1. 📦 Retriever  — FAISS vector search with MMR\n"
+            "  2. 🛡️  Guardrail  — LLM-based relevance & safety filter\n"
+            "  3. 🤖 Generator  — Grounded answer generation\n"
+            "  4. ✅ Evaluator  — Factual consistency scoring",
+            title="🚀 RAG Pipeline",
+            border_style="bright_blue",
+            padding=(1, 2),
+        )
+    )
 
     # ── Initialize ──────────────────────────────────────────────
     console.print("\n[bold yellow]Initializing pipeline...[/bold yellow]")
@@ -238,11 +237,13 @@ def main():
             console.print()
 
         # ── Interactive Mode ────────────────────────────────────────
-        console.print(Panel(
-            "Type a question and press Enter. Type 'quit' to exit.",
-            title="💬 Interactive Mode",
-            border_style="green",
-        ))
+        console.print(
+            Panel(
+                "Type a question and press Enter. Type 'quit' to exit.",
+                title="💬 Interactive Mode",
+                border_style="green",
+            )
+        )
 
         while True:
             try:

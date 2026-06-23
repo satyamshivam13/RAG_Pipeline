@@ -9,28 +9,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-from typing import Protocol
+from typing import Any, Protocol
 
 import tiktoken
 
 from config import ChunkingConfig
 
-
 _SENTENCE_ENDINGS = ".!?\u3002\uff01\uff1f\u0964\u061f"
 _SENTENCE_RE = re.compile(rf".+?(?:[{re.escape(_SENTENCE_ENDINGS)}]+(?=\s|$)|$)", re.DOTALL)
-_TOKENIZER_CACHE: dict[tuple[str, str], object] = {}
+_TOKENIZER_CACHE: dict[tuple[str, str], Any] = {}
 _TOKENIZER_FALLBACKS: set[tuple[str, str]] = set()
 
 
 class Tokenizer(Protocol):
-    def encode(self, text: str) -> list:
-        ...
+    def encode(self, text: str) -> list: ...
 
-    def decode(self, tokens: list) -> str:
-        ...
+    def decode(self, tokens: list) -> str: ...
 
-    def count(self, text: str) -> int:
-        ...
+    def count(self, text: str) -> int: ...
 
 
 class TiktokenTokenizer:
@@ -39,6 +35,8 @@ class TiktokenTokenizer:
     def __init__(self, model: str = "gpt-4o-mini", encoding_name: str = "cl100k_base"):
         key = (model, encoding_name)
         self._fallback: RegexTokenizer | None = None
+        # Holds a tiktoken Encoding (untyped third-party) or None when a fallback is used.
+        self._encoding: Any = None
         if encoding_name == "regex":
             self._encoding = None
             self._fallback = RegexTokenizer()
@@ -127,8 +125,7 @@ class ChunkPlan:
 class ChunkStrategy(Protocol):
     name: str
 
-    def split(self, text: str) -> list[ChunkPlan]:
-        ...
+    def split(self, text: str) -> list[ChunkPlan]: ...
 
 
 @dataclass(frozen=True)
@@ -354,7 +351,9 @@ class LegacyCharacterChunker:
 
     def _plan(self, content: str, overlap_tokens: int = 0) -> ChunkPlan:
         token_count = self._tokenizer.count(content)
-        sentence_count = len([match.group(0).strip() for match in _SENTENCE_RE.finditer(content) if match.group(0).strip()])
+        sentence_count = len(
+            [match.group(0).strip() for match in _SENTENCE_RE.finditer(content) if match.group(0).strip()]
+        )
         paragraph_count = len([p for p in re.split(r"\n\s*\n", content) if p.strip()])
         metrics = ChunkQualityMetrics(
             token_count=token_count,
@@ -386,6 +385,7 @@ class LegacyCharacterChunker:
             return start + space + 1
 
         return end
+
 
 def build_chunk_strategy(config: ChunkingConfig, tokenizer: Tokenizer | None = None) -> ChunkStrategy:
     if config.strategy == "semantic":

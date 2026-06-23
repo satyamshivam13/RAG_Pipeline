@@ -1,4 +1,5 @@
 ﻿"""Tests for the Generator (uses mocked LLM)."""
+
 import pytest
 from unittest.mock import MagicMock
 

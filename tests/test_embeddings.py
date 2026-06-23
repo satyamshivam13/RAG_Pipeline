@@ -1,8 +1,9 @@
 ﻿import numpy as np
 import pytest
 
-from config import EmbeddingConfig
+from config import EmbeddingConfig, VectorStoreConfig
 from embeddings import EmbeddingModel
+from vector_store import VectorStore
 
 
 class _FakeSentenceTransformer:
@@ -50,9 +51,6 @@ def test_embedding_model_dimension_mismatch_fails_fast(monkeypatch):
     assert "Embedding dimension mismatch" in message
     assert "outputs 384" in message
     assert "dimension is 1024" in message
-
-from config import EmbeddingConfig, VectorStoreConfig
-from vector_store import VectorStore
 
 
 def test_fresh_index_build_uses_upgraded_embedding_default(tmp_path):
