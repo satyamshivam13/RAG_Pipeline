@@ -2,9 +2,11 @@
 
 ### Production-grade Retrieval-Augmented Generation pipeline for grounded, low-hallucination question answering.
 
-**Latest update:** FastAPI service layer now implemented! Deploy with Docker Compose or Kubernetes. See [DEPLOYMENT.md](docs/DEPLOYMENT.md) and [API.md](docs/API.md).
+**Latest update:** FastAPI service layer implemented and Docker image verified (builds + `/health` passes). Deploy with Docker or Docker Compose. See [DEPLOYMENT.md](docs/DEPLOYMENT.md) and [API.md](docs/API.md).
 
-Engineering recruiter summary: Built as a modular RAG system with measurable quality (89% relevance, 850ms latency, 6% hallucination) and production-oriented architecture with full REST API.
+Engineering recruiter summary: A modular, production-oriented RAG system with a FastAPI service, FAISS semantic retrieval, guardrail + evaluation stages, OpenTelemetry observability, and a reproducible RAGAS evaluation harness. Quality is measured by a runnable evaluation pipeline rather than asserted (see [Key Metrics](#key-metrics)).
+
+> **Status**: v1.0 — RAG pipeline with retrieval, guardrail-gate, generation, and evaluation stages, a FastAPI service, and a Docker image. Quantitative quality metrics are produced by the RAGAS harness in [`eval_ragas.ipynb`](eval_ragas.ipynb); see [Key Metrics](#key-metrics) for current measured/pending status.
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![CI](https://github.com/satyamshivam13/RAG_Pipeline/actions/workflows/ci.yml/badge.svg)
@@ -16,17 +18,17 @@ Engineering recruiter summary: Built as a modular RAG system with measurable qua
 
 <!-- TODO: Add deployment status badge (e.g., Railway/Render/Fly.io) -->
 
-This system ingests PDF knowledge sources, transforms them into semantic vector representations, and retrieves the best evidence before generation. It combines retrieval, reranking, guardrails, and evaluation to deliver technically grounded responses with measurable quality.
+This system ingests text knowledge sources (plain strings and `.txt` files), transforms them into semantic vector representations, and retrieves the best evidence before generation. It combines retrieval, MMR diversity re-ranking, a guardrail gate, generation, and an evaluation stage to deliver grounded responses with a reproducible quality-measurement harness.
 
 ## Recruiter Snapshot
 
 | Category | Snapshot |
 |---|---|
 | Project type | Retrieval-Augmented Generation (RAG) AI system |
-| Core technologies | Python, LangChain, FAISS, ChromaDB, FastAPI, Docker |
-| Measurable performance | 89% relevance, 850ms average latency, 6% hallucination rate |
-| Deployment readiness | Modular architecture, API-ready components, container-friendly stack |
-| Scalability highlights | Vector retrieval layer, pluggable reranking, componentized pipeline for incremental extension |
+| Core technologies | Python, FAISS, sentence-transformers, OpenAI-compatible LLM (Groq/OpenAI), FastAPI, Docker, OpenTelemetry |
+| Quality measurement | RAGAS harness (faithfulness, answer relevancy, context precision/recall) over a 22-sample grounded set — see [Key Metrics](#key-metrics) |
+| Measured latency | ~9.3s mean end-to-end per query (sync-evaluator mode, llama-3.3-70b via Groq; see [report](evaluation/reports/ragas-run-2026-06-23.json)) |
+| Deployment readiness | Verified Docker image (builds + `/health` passes); modular components; container-friendly stack |
 
 ## Table of Contents
 
@@ -47,16 +49,16 @@ This system ingests PDF knowledge sources, transforms them into semantic vector 
 
 ## What This Project Does
 
-The pipeline processes PDF content into chunked, embedded, and indexed knowledge units for semantic retrieval at query time. Retrieved evidence is reranked and passed to the LLM so final answers are more relevant, more explainable, and less prone to hallucination.
+The pipeline processes text content into token-aware chunks, embeds them with sentence-transformers, and indexes them in FAISS for semantic retrieval at query time. Retrieved evidence is diversity-re-ranked (MMR), passed through a guardrail gate, and handed to the LLM so final answers are more relevant, more explainable, and less prone to hallucination.
 
 ## Features
 
-- PDF ingestion and chunk-based preprocessing
-- Embedding generation and semantic vector indexing
-- Retrieval path compatible with FAISS and Chroma-style vector stores
-- Reranking stage before final answer generation
-- Guardrail and evaluator layers for quality and reliability checks
+- Text ingestion (plain strings / `.txt`) with token-aware, overlapping chunking
+- Embedding generation (`bge-large-en-v1.5`) and FAISS semantic vector indexing
+- MMR diversity re-ranking with a configurable similarity threshold
+- Guardrail gate and an LLM evaluator that scores answer/context consistency
 - OpenTelemetry traces, metrics, and structured logs with local Grafana/Prometheus examples
+- RAGAS evaluation harness with a grounded dataset and quality reports
 - Clean module boundaries for production-oriented extension and testing
 
 ## Architecture
@@ -65,40 +67,60 @@ The pipeline processes PDF content into chunked, embedded, and indexed knowledge
 
 ```mermaid
 flowchart LR
-    A[PDF] --> B[Chunker]
-    B --> C[Embedder]
-    C --> D[FAISS / Chroma]
-    D --> E[Reranker]
-    E --> F[LLM]
-    F --> G[Response]
+    A[Documents] --> B[Chunker]
+    B --> C[Embedder<br/>bge-large]
+    C --> D[FAISS<br/>+ MMR]
+    D --> E[Guardrail gate]
+    E --> F[Generator LLM]
+    F --> G[Evaluator]
+    G --> H[Response + consistency score]
 ```
 
 ### ASCII Pipeline
 
 ```text
-[PDF] -> [Chunker] -> [Embedder] -> [FAISS/Chroma] -> [Reranker] -> [LLM] -> [Response]
+[Documents] -> [Chunker] -> [Embedder] -> [FAISS + MMR] -> [Guardrail] -> [Generator LLM] -> [Evaluator] -> [Response]
 ```
 
 ## Key Metrics
 
+Metrics here come from a **reproducible evaluation harness**, not hand-typed numbers. The harness
+([`eval_ragas.ipynb`](eval_ragas.ipynb) / [`evaluation/run_ragas.py`](evaluation/run_ragas.py)) runs a
+22-question grounded set through the real pipeline and scores it with RAGAS.
+
+**Latency — measured (n=22, sync-evaluator mode, llama-3.3-70b via Groq):**
+
 | Metric | Value |
 |---|---:|
-| Relevance accuracy | 89% |
-| Average latency | 850ms |
-| Hallucination rate | 6% |
+| Mean end-to-end latency | ~9.3 s |
+| Median | ~9.5 s |
+| p95 | ~12.5 s |
+| Range | 2.6 s – 14.2 s |
 
-<!-- TODO: Add benchmark dashboard URL when available -->
-<!-- Benchmark Dashboard: https://your-benchmark-dashboard-url -->
+> Latency is config-dependent: `evaluator_mode=sync` adds a second verification LLM call per query, and
+> these numbers include provider queueing. Deferred-evaluation mode returns the answer before evaluation
+> and is lower. Source: [`evaluation/reports/ragas-run-2026-06-23.json`](evaluation/reports/ragas-run-2026-06-23.json).
+
+**RAGAS quality metrics (faithfulness, answer relevancy, context precision, context recall):**
+implemented and runnable, but the most recent run only completed ~28% of judge calls before the free-tier
+provider hit its **daily token cap**, so these are currently **NOT VERIFIED**. Re-run
+`python -m evaluation.run_ragas` with available quota to populate them; the harness writes results to
+`evaluation/reports/ragas-latest.json`.
+
+<!-- When a full RAGAS run completes, replace the line above with the measured faithfulness/relevancy/precision/recall values from evaluation/reports/ragas-latest.json -->
 
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Language | Python |
-| Orchestration | LangChain |
-| Vector Index | FAISS |
-| Vector DB Option | ChromaDB |
-| API Layer | FastAPI |
+| Language | Python 3.11 |
+| Pipeline orchestration | Custom (no external agent framework) |
+| LLM | OpenAI-compatible API (tested with Groq `llama-3.3-70b-versatile` and OpenAI) |
+| Embeddings | sentence-transformers (`BAAI/bge-large-en-v1.5`, 1024-d) |
+| Vector Index | FAISS (flat / IVF / HNSW) with MMR |
+| API Layer | FastAPI + Gunicorn/Uvicorn |
+| Observability | OpenTelemetry (traces, metrics, structured logs) |
+| Evaluation | RAGAS |
 | Containerization | Docker |
 
 ## Setup Instructions
@@ -144,12 +166,26 @@ Interactive demo:
 python demo.py
 ```
 
-Evaluation workflow:
+Offline evaluation (deterministic, CI quality gates):
 
 ```bash
 python -m evaluation.run_eval --dataset evaluation/datasets/phase2_eval.jsonl --output evaluation/reports/phase2-latest.json
 python -m evaluation.quality_gates --report evaluation/reports/phase2-latest.json
 ```
+
+RAGAS evaluation (faithfulness / answer relevancy / context precision / recall):
+
+```bash
+# Requires a valid OPENAI_API_KEY (any OpenAI-compatible endpoint, e.g. Groq via LLM_BASE_URL)
+python -m evaluation.run_ragas \
+  --corpus evaluation/datasets/ragas_corpus.json \
+  --dataset evaluation/datasets/ragas_eval.jsonl \
+  --output evaluation/reports/ragas-latest.json
+# or run the notebook end-to-end:  jupyter lab eval_ragas.ipynb
+```
+
+> Note: RAGAS makes many judge-LLM calls. On a free-tier provider you may hit a daily token cap before
+> the full 22-sample run completes — use a paid/higher-quota key or re-run after the quota resets.
 
 Run tests:
 
@@ -223,10 +259,12 @@ From an engineering standpoint, semantic retrieval enables better knowledge util
 
 ## Future Improvements
 
-- ✅ **Production FastAPI endpoints** (DONE - sync/streaming/health checks)
-- ✅ **Dockerfile and docker-compose** (DONE - multi-stage, optimized)
-- Add hybrid retrieval (dense + sparse) with weighted rank fusion
-- Improve reranker options and adaptive context packing
+- ✅ **FastAPI endpoints** (sync/streaming/health; `/query` per-request overrides fixed)
+- ✅ **Dockerfile + docker-compose** (multi-stage, non-root, verified `/health`)
+- ✅ **RAGAS evaluation harness** (runnable notebook + runner + grounded dataset)
+- Slim the Docker image (CPU-only torch / externalize embeddings) from ~9.3 GB
+- Add hybrid retrieval (dense + sparse / BM25) with weighted rank fusion
+- Add a cross-encoder re-ranking stage (beyond MMR)
 - Add observability dashboards for latency, relevance, and failure analytics
 - Add GraphQL API option alongside REST
 - Implement request/response caching with Redis
@@ -266,12 +304,12 @@ docker run --rm -p 8000:8000 \
 ```
 
 Notes:
-- The Docker image uses a multi-stage build and a Python virtual environment to keep the runtime image small and reproducible.
+- The image uses a multi-stage build and a Python virtual environment for a reproducible runtime. Note it is **large (~9.3 GB)** because it bundles PyTorch + sentence-transformers for local embeddings; slimming it (CPU-only torch wheel, or an external embedding service) is a tracked improvement.
+- On first start the container downloads the `bge-large-en-v1.5` model (~1.3 GB) and loads it before serving, so **cold start takes ~1–2 minutes**. Mount a host HuggingFace cache (`-v $HOME/.cache/huggingface:/home/app/.cache/huggingface`) to avoid re-downloading. The Dockerfile healthcheck `--start-period` should be raised accordingly.
 - The container runs as a non-root user (`app`) for improved security.
 - The `vector_store_data` volume is persisted on the host to retain indexed vectors between restarts.
- - `start.sh` is the entrypoint and will exec the provided CMD. The image runs the app
-     under `gunicorn` by default for production process management (override via `GUNICORN_WORKERS`).
- - The container healthcheck is a HTTP probe using `curl` against `/health`.
+- `start.sh` is the entrypoint and execs the provided CMD; the image runs under `gunicorn` by default (override workers via `GUNICORN_WORKERS`).
+- Verified locally: image builds, and `GET /health` returns `{"status":"healthy"}` with embeddings, vector_store, and llm all healthy.
 
 
 ## Contribution
