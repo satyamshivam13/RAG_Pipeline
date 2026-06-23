@@ -14,7 +14,7 @@
       "id": 1,
       "targets": [
         {
-          "expr": "sum(rate(rag_pipeline_rag_query_requests_total_total[5m]))",
+          "expr": "sum(rate(rag_pipeline_rag_query_requests_total[5m]))",
           "legendFormat": "queries/sec",
           "refId": "A"
         }
@@ -99,7 +99,7 @@
       "id": 6,
       "targets": [
         {
-          "expr": "sum(rate(rag_pipeline_rag_http_requests_total_total{status_code=~\"5..\"}[5m]))",
+          "expr": "sum(rate(rag_pipeline_rag_http_requests_total{status_code=~\"5..\"}[5m]))",
           "legendFormat": "5xx/sec",
           "refId": "A"
         }

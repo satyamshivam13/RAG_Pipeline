@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch, MagicMock
 import json
 
-from api import app, get_pipeline
+from api import app, get_pipeline, limiter
 from models import (
     RetrievedChunk, Chunk, GeneratorOutput, EvaluatorOutput, EvaluationStatus, PipelineResult
 )
@@ -251,17 +251,15 @@ class TestIngestEndpoint:
         }
         
         # Make 11 requests - the 11th should be rate limited
-        success_count = 0
+        limiter._storage.reset()
+        status_codes = []
         for i in range(12):
             response = client.post("/ingest", json=payload)
-            if response.status_code == 200:
-                success_count += 1
-            elif response.status_code == 429:
-                # Rate limited as expected
-                break
-        
-        # At least one request succeeded (rate limiter is per-client)
-        assert success_count >= 1
+            status_codes.append(response.status_code)
+
+        assert 200 in status_codes
+        assert 429 in status_codes
+        assert status_codes.count(200) < len(status_codes)
 
 
 class TestQueryEndpoint:
@@ -439,17 +437,15 @@ class TestQueryEndpoint:
         }
         
         # Make multiple requests to test rate limiting
-        success_count = 0
+        limiter._storage.reset()
+        status_codes = []
         for i in range(32):
             response = client.post("/query", json=payload)
-            if response.status_code == 200:
-                success_count += 1
-            elif response.status_code == 429:
-                # Rate limited as expected
-                break
-        
-        # At least one request succeeded
-        assert success_count >= 1
+            status_codes.append(response.status_code)
+
+        assert 200 in status_codes
+        assert 429 in status_codes
+        assert status_codes.count(200) < len(status_codes)
 
 
 class TestResponseModels:

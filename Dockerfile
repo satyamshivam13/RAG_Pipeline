@@ -57,11 +57,8 @@ USER app
 EXPOSE 8000
 
 # Healthcheck using curl which is installed above
-HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
   CMD curl -fsS http://localhost:8000/health || exit 1
 
-# Entrypoint handles startup tasks and then execs CMD
+# Entrypoint handles startup tasks and launches Gunicorn by default
 ENTRYPOINT ["/app/start.sh"]
-
-# Use sh -c form so environment variable expansion works when overridden
-CMD ["sh", "-c", "gunicorn -k uvicorn.workers.UvicornWorker -w ${GUNICORN_WORKERS:-4} --bind 0.0.0.0:8000 api:app --access-logfile - --log-level info"]

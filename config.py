@@ -11,6 +11,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _parse_int_env(name: str, default: int) -> int:
+    """Return an integer environment setting, falling back on invalid input."""
+    try:
+        return int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
+
+
 @dataclass(frozen=True)
 class EmbeddingConfig:
     model_name: str = "BAAI/bge-large-en-v1.5"
@@ -113,7 +121,7 @@ class TelemetryConfig:
         default_factory=lambda: os.getenv("STRUCTURED_LOGS_ENABLED", "true").lower() == "true"
     )
     metric_export_interval_ms: int = field(
-        default_factory=lambda: int(os.getenv("OTEL_METRIC_EXPORT_INTERVAL_MS", "60000"))
+        default_factory=lambda: _parse_int_env("OTEL_METRIC_EXPORT_INTERVAL_MS", 60000)
     )
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
     service_version: str = field(default_factory=lambda: os.getenv("SERVICE_VERSION", "1.0.0"))

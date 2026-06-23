@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import statistics
 import time
@@ -92,7 +93,7 @@ def run(corpus_path: Path, dataset_path: Path, output_path: Path, limit: int | N
         t0 = time.perf_counter()
         result = pipeline.query(row["question"])
         latencies.append((time.perf_counter() - t0) * 1000)
-        retrieved = [rc.chunk.content for rc in result.retrieval] or [""]
+        retrieved = [rc.chunk.content for rc in result.retrieval] or []
         questions.append(row["question"])
         answers.append(result.answer)
         contexts.append(retrieved)
@@ -137,7 +138,7 @@ def run(corpus_path: Path, dataset_path: Path, output_path: Path, limit: int | N
     )
 
     scores = {k: (round(float(v), 4) if v is not None else None) for k, v in dict(eval_result).items()}
-    p95 = sorted(latencies)[max(0, int(0.95 * len(latencies)) - 1)]
+    p95 = sorted(latencies)[math.ceil(0.95 * len(latencies)) - 1]
     report = {
         "evaluator": "ragas",
         "run_at": datetime.now(timezone.utc).isoformat(),

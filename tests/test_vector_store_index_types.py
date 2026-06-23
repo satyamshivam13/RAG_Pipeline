@@ -1,7 +1,6 @@
 import time
 import numpy as np
 import pytest
-import tempfile
 
 from config import VectorStoreConfig
 from vector_store import VectorStore
@@ -33,8 +32,8 @@ def test_mmr_on_index_types(index_type, tmp_path):
     assert len(results) <= 3
 
 
-def test_mmr_benchmark_small():
-    cfg = VectorStoreConfig(persist_dir=tempfile.mkdtemp(), index_type="flat")
+def test_mmr_benchmark_small(tmp_path):
+    cfg = VectorStoreConfig(persist_dir=str(tmp_path), index_type="flat")
     store = VectorStore(cfg, dimension=64)
 
     rng = np.random.RandomState(0)

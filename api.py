@@ -225,8 +225,11 @@ async def verify_auth_token(authorization: Optional[str] = Header(None)) -> None
         return
 
     if not _auth_token:
-        logger.warning("Auth token not configured; auth disabled")
-        return
+        logger.error("Auth token not configured")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication is not configured",
+        )
 
     if not authorization:
         logger.warning("Missing authorization header")
@@ -410,7 +413,8 @@ app = FastAPI(
 # Add middleware (order matters - add in reverse order of execution)
 app.add_middleware(LoggingMiddleware)
 _trusted_hosts = [host.strip() for host in os.getenv("TRUSTED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
-if "testserver" not in _trusted_hosts:
+_environment = os.getenv("ENVIRONMENT", "").lower()
+if _environment in {"local", "development", "dev", "test", "testing"} and "testserver" not in _trusted_hosts:
     _trusted_hosts.append("testserver")
 app.add_middleware(
     TrustedHostMiddleware,
