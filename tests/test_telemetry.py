@@ -62,7 +62,7 @@ class _StubRetriever:
     def __init__(self, _cfg, _emb, _store):
         pass
 
-    def retrieve(self, query):
+    def retrieve(self, query, top_k=None):
         c1 = Chunk(id="ctx-a", document_id="d1", content="ctx 1", source="s1")
         c2 = Chunk(id="ctx-b", document_id="d1", content="ctx 2", source="s1")
         return [

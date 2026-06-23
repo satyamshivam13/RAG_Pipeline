@@ -111,9 +111,32 @@ class RAGPipeline:
             set_span_attributes(span, {"chunk.count": len(chunks), "duration_ms": elapsed_ms})
             return len(chunks)
 
-    def query(self, question: str) -> PipelineResult:
+    def query(
+        self,
+        question: str,
+        enable_guardrail: Optional[bool] = None,
+        sync_evaluation: Optional[bool] = None,
+        top_k: Optional[int] = None,
+    ) -> PipelineResult:
+        """Run a question through the pipeline.
+
+        ``enable_guardrail``, ``sync_evaluation`` and ``top_k`` are optional
+        per-request overrides (used by the API). When left as ``None`` the
+        pipeline falls back to the configured runtime/retriever defaults, so
+        existing callers that pass only ``question`` keep their behavior.
+        """
         t0 = time.perf_counter()
         correlation_id = get_or_create_correlation_id()
+
+        use_guardrail = (
+            self._config.runtime.use_guardrail if enable_guardrail is None else enable_guardrail
+        )
+        run_sync_eval = (
+            (self._config.runtime.evaluator_mode == "sync")
+            if sync_evaluation is None
+            else sync_evaluation
+        )
+
         with span_context_or_null("rag.query", {"query.length": len(question)}, "rag.main") as query_span:
             if query_span:
                 set_span_attributes(query_span, {"correlation_id": correlation_id})
@@ -125,7 +148,7 @@ class RAGPipeline:
             )
 
             with span_context_or_null("rag.retrieve", tracer_name="rag.main") as retrieve_span:
-                retrieved = self._retriever.retrieve(question)
+                retrieved = self._retriever.retrieve(question, top_k=top_k)
                 set_span_attributes(retrieve_span, {"retrieved.count": len(retrieved)})
             logger.info("  Step 1 (Retrieve): %s chunks", len(retrieved))
 
@@ -136,7 +159,7 @@ class RAGPipeline:
 
             guardrail_output = None
 
-            if self._config.runtime.use_guardrail:
+            if use_guardrail:
                 guardrail_output = self._guardrail.evaluate(question, filtered)
                 filtered = guardrail_output.filtered_chunks
                 logger.info("  Step 2 (Guardrail): %s/%s chunks kept", len(filtered), len(retrieved))
@@ -150,7 +173,7 @@ class RAGPipeline:
 
             evaluation_status = EvaluationStatus.PENDING
             evaluation_error = None
-            evaluation_deferred = self._config.runtime.evaluator_mode != "sync"
+            evaluation_deferred = not run_sync_eval
 
             placeholder_eval = EvaluatorOutput(
                 overall_consistency_score=0.0,
@@ -161,7 +184,7 @@ class RAGPipeline:
             )
             eval_output = placeholder_eval
 
-            if self._config.runtime.evaluator_mode == "sync":
+            if run_sync_eval:
                 eval_output, evaluation_status, evaluation_error = self._evaluate_safe(
                     answer=gen_output.answer,
                     context_chunks=filtered,

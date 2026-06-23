@@ -33,10 +33,14 @@ class Retriever:
         self._embeddings = embedding_model
         self._store = vector_store
 
-    def retrieve(self, query: str) -> list[RetrievedChunk]:
+    def retrieve(self, query: str, top_k: int | None = None) -> list[RetrievedChunk]:
         """
         Embed the query, search the vector store, optionally apply MMR.
         Returns chunks sorted by descending relevance.
+
+        ``top_k`` optionally overrides the configured number of chunks returned
+        (used by the API to honor per-request ``top_k``). When omitted, the
+        retriever's configured defaults are used.
         """
         t0 = time.perf_counter()
         with span_context_or_null(
@@ -47,17 +51,19 @@ class Retriever:
             query_vec = self._embeddings.embed_query(query)
 
             if self._config.use_mmr:
+                final_k = top_k or self._config.mmr_top_k
+                fetch_k = max(self._config.top_k, final_k)
                 results = self._store.mmr_search(
                     query_embedding=query_vec,
-                    top_k=self._config.mmr_top_k,
-                    fetch_k=self._config.top_k,
+                    top_k=final_k,
+                    fetch_k=fetch_k,
                     lambda_mult=self._config.mmr_lambda,
                     threshold=self._config.similarity_threshold,
                 )
             else:
                 results = self._store.search(
                     query_embedding=query_vec,
-                    top_k=self._config.top_k,
+                    top_k=top_k or self._config.top_k,
                     threshold=self._config.similarity_threshold,
                 )
 
