@@ -1,0 +1,7 @@
+# Docker verification (Tue Jun 23 06:18:34 IST 2026)
+## image
+rag-pipeline:latest 9.31GB
+## /health
+{"status":"healthy","timestamp":1782175717.3409965,"components":{"embeddings":"healthy","vector_store":"healthy","llm":"healthy"},"version":"1.0.0"}
+## POST /query (empty store) HTTP status + body
+{"detail":"Invalid query request: RAGPipeline.query() got an unexpected keyword argument 'enable_guardrail'"}
