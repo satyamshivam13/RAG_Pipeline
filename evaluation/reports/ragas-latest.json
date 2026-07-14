@@ -1,0 +1,28 @@
+{
+  "evaluator": "ragas",
+  "run_at": "2026-07-13T12:46:30.553212+00:00",
+  "status": "PARTIAL - some metric jobs did not finish (see coverage)",
+  "judge_model": "llama-3.3-70b-versatile",
+  "judge_provider_base_url": "https://api.groq.com/openai/v1",
+  "embedding_model": "BAAI/bge-large-en-v1.5",
+  "dataset_size": 6,
+  "corpus_passages": 20,
+  "metrics": {
+    "faithfulness": 0.6554,
+    "answer_relevancy": 0.9106,
+    "llm_context_precision_with_reference": 0.9444,
+    "context_recall": 1.0
+  },
+  "metric_coverage": {
+    "faithfulness": "5/6",
+    "answer_relevancy": "6/6",
+    "llm_context_precision_with_reference": "6/6",
+    "context_recall": "6/6"
+  },
+  "latency_ms": {
+    "mean": 4779.9,
+    "median": 3577.6,
+    "p95": 9549.0
+  },
+  "pipeline_consistency_mean": 0.9375
+}
