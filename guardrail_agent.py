@@ -170,6 +170,6 @@ class GuardrailAgent:
                         reasoning=item.get("reasoning", ""),
                     )
                 )
-            except (KeyError, ValueError) as e:
+            except (KeyError, ValueError, TypeError, AttributeError) as e:
                 logger.warning(f"Skipping malformed evaluation: {e}")
         return results
